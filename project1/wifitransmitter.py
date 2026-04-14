@@ -10,12 +10,12 @@ def WifiTransmitter(*args):
         # Arg1 = Message, Arg2 = Level, Arg3 = SNR
         message = args[0]
         level=4
-        snr=np.Inf
+        snr=np.inf
     elif len(args)<3:
         # Arg1 = Message, Arg2 = Level, Arg3 = SNR
         message=args[0]
         level=int(args[1])
-        snr=np.Inf
+        snr=np.inf
     elif len(args)<4:
         # Arg1 = Message, Arg2 = Level, Arg3 = SNR
         message=args[0]

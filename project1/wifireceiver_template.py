@@ -7,6 +7,42 @@ import commpy.channelcoding.convcode as check
 from pip import main
 import matplotlib.pyplot as plt
 
+def expected_output(state: int, in_bit: int) -> complex:
+    """
+    Computes the expected output the Viterbi algorithm given the current state
+    and the current input bit
+    :param state: the current state
+    :param in_bit: the input bit
+    :return: the QAM modulated expected output
+    """
+    assert state <= 3 and in_bit >= 0, "Input state was not in the correct range"
+    assert in_bit <= 1 and in_bit >= 0, "Input bit was not binary"
+
+    out: complex = 0
+    # compute the real part (output bit 0)
+    out += (((state & 1) ^ ((state & (1 << 1)) >> 1) ^ in_bit) * 2) - 1
+    # compute the complex part (output bit 1)
+    out += ((((state & (1 << 1)) >> 1) ^ in_bit) * 2j) - 1j
+    return out
+
+def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
+    """
+    Soft decoder for the Viterbi algorithm
+    :param input_signal: the QAM modulated convolutional code
+    """
+    # compute expected outputs and the next state
+    expected_symbols = np.zeros((4, 2), dtype=np.complex128)
+    next_states = np.zeros((4, 2), dtype=np.uint8)
+    for state in range(4):
+        for in_bit in range(2):
+            expected_symbols[state, in_bit] = expected_output(state, in_bit)
+            next_states[state, in_bit] = ((state << 1) | in_bit) & 0b11
+
+    print(expected_symbols)
+
+    for state in range(4):
+        for in_bit in range(2):
+            print(f"In state {bin(state)} with input {in_bit}", expected_symbols[state, in_bit])
 
 def WifiReceiver(input_stream, level):
 
@@ -33,7 +69,8 @@ def WifiReceiver(input_stream, level):
     if level >= 2:
         #Input QAM modulated + Encoded Bits
         #Output Interleaved bits + Encoded Length
-        input_stream=input_stream
+        viterbi_soft_decode(input_stream)
+        input_stream = input_stream
        
     if level >= 1:
         #Input Interleaved bits + Encoded Length
