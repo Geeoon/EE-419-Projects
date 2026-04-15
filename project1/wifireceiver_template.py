@@ -25,6 +25,53 @@ def expected_output(state: int, in_bit: int) -> complex:
     out += ((((state & (1 << 1)) >> 1) ^ in_bit) * 2j) - 1j
     return out
 
+def viterbi_stage(states: list[dict],
+                  recv: np.complex128,
+                  expected_outputs: np.ndarray):
+    """
+    Computes a stage of the Viterbi algorithm.  Modifies states
+    :param states: the current weights of the states (and how we got there)
+    :param recv: the received signal for this stage
+    :param expected_outputs: the expected outputs for every state, input combo
+    """
+    # find minimum weight for each new next state
+    # ns 0
+    # from 00 to 00
+    # w1 = (expected_outputs[0b00, 0] - recv) ** 2
+    # from 10 to 00
+    # w2 = (expected_outputs[0b10, 0] - recv) ** 2
+
+    # if (expected_outputs[0b00, 0] - recv) ** 2 > (expected_outputs[0b10, 0] - recv) ** 2:
+    #     states[0b00]["weight"] += w1
+    #     pass
+    # else:
+    #     pass
+    # states[0b00]["weight"]
+    # states[0b10]["weight"]
+
+    # ns 1
+    # ns 2
+    # ns 3
+
+    # for each state
+    for cur_state, attr in enumerate(states):
+        # for each previous state
+        in_bit = cur_state & 1
+        p_state0 = (cur_state >> 1)
+        p_state1 = (cur_state >> 1) | (1 << 1)
+        # get the weight for transitions
+        w0 = (expected_outputs[p_state0, in_bit] - recv)
+        w0 = w0.imag ** 2 + w0.real ** 2
+        w1 = (expected_outputs[p_state1, in_bit] - recv)
+        w1 = w1.imag ** 2 + w1.real ** 2
+        attr["path"] = states[p_state0]["path"] if w0 > w1 else states[p_state0]["path"]
+
+        attr["weight"] = min(w0 + states[p_state0]["weight"], w1 + states[p_state1]["weight"])
+            
+        print(attr["weight"])
+    print('')
+    print(states)
+
 def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
     """
     Soft decoder for the Viterbi algorithm
@@ -37,12 +84,31 @@ def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
         for in_bit in range(2):
             expected_symbols[state, in_bit] = expected_output(state, in_bit)
             next_states[state, in_bit] = ((state << 1) | in_bit) & 0b11
+    
+    # set initial states
+    states = [
+        {
+            "weight": 0,
+            "path": []
+        },
+        {
+            "weight": np.inf,
+            "path": []
+        },
+        {
+            "weight": np.inf,
+            "path": []
+        },
+        {
+            "weight": np.inf,
+            "path": []
+        }
+    ]
+    for signal in input_signal:
+        viterbi_stage(states, signal, expected_symbols)
 
-    print(expected_symbols)
+    # print(states)
 
-    for state in range(4):
-        for in_bit in range(2):
-            print(f"In state {bin(state)} with input {in_bit}", expected_symbols[state, in_bit])
 
 def WifiReceiver(input_stream, level):
 
@@ -83,7 +149,8 @@ def WifiReceiver(input_stream, level):
 # for testing purpose
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
-    test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
+    # test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
+    test_case = ''
     symbols = [randint(0, 1) for i in range(32*8)]
     print(test_case)
     output = WifiTransmitter(test_case, 2)
