@@ -34,27 +34,10 @@ def viterbi_stage(states: list[dict],
     :param recv: the received signal for this stage
     :param expected_outputs: the expected outputs for every state, input combo
     """
-    # find minimum weight for each new next state
-    # ns 0
-    # from 00 to 00
-    # w1 = (expected_outputs[0b00, 0] - recv) ** 2
-    # from 10 to 00
-    # w2 = (expected_outputs[0b10, 0] - recv) ** 2
-
-    # if (expected_outputs[0b00, 0] - recv) ** 2 > (expected_outputs[0b10, 0] - recv) ** 2:
-    #     states[0b00]["weight"] += w1
-    #     pass
-    # else:
-    #     pass
-    # states[0b00]["weight"]
-    # states[0b10]["weight"]
-
-    # ns 1
-    # ns 2
-    # ns 3
+    new_states = [{"weight": np.inf, "path": []} for _ in range(len(states))]
 
     # for each state
-    for cur_state, attr in enumerate(states):
+    for cur_state in range(4):
         # for each previous state
         in_bit = cur_state & 1
         p_state0 = (cur_state >> 1)
@@ -64,13 +47,15 @@ def viterbi_stage(states: list[dict],
         w0 = w0.imag ** 2 + w0.real ** 2
         w1 = (expected_outputs[p_state1, in_bit] - recv)
         w1 = w1.imag ** 2 + w1.real ** 2
-        attr["path"] = states[p_state0]["path"] if w0 > w1 else states[p_state0]["path"]
 
-        attr["weight"] = min(w0 + states[p_state0]["weight"], w1 + states[p_state1]["weight"])
-            
-        print(attr["weight"])
-    print('')
-    print(states)
+        # set the new path and the new weight depending on the weights
+        if w0 + states[p_state0]["weight"] < w1 + states[p_state1]["weight"]:
+            new_states[cur_state]["weight"] = w0 + states[p_state0]["weight"]
+            new_states[cur_state]["path"] = states[p_state0]["path"] + [in_bit]
+        else:
+            new_states[cur_state]["weight"] = w1 + states[p_state1]["weight"]
+            new_states[cur_state]["path"] = states[p_state1]["path"] + [in_bit]
+    states[:] = new_states            
 
 def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
     """
@@ -107,7 +92,8 @@ def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
     for signal in input_signal:
         viterbi_stage(states, signal, expected_symbols)
 
-    # print(states)
+    # should end on state 00. and we need to shave off the last two 0 bits
+    return np.array(states[0]["path"][:-3])
 
 
 def WifiReceiver(input_stream, level):
@@ -135,8 +121,7 @@ def WifiReceiver(input_stream, level):
     if level >= 2:
         #Input QAM modulated + Encoded Bits
         #Output Interleaved bits + Encoded Length
-        viterbi_soft_decode(input_stream)
-        input_stream = input_stream
+        input_stream = viterbi_soft_decode(input_stream)
        
     if level >= 1:
         #Input Interleaved bits + Encoded Length
@@ -149,10 +134,19 @@ def WifiReceiver(input_stream, level):
 # for testing purpose
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
-    # test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    test_case = ''
+    # for testing the viterbi decoder
+    # for i in range(100):
+    #     test_msg = np.random.default_rng().integers(0, 2, size=1000)
+    #     cc1 = check.Trellis(np.array([3]),np.array([[0o7,0o5]]))
+    #     coded_message = check.conv_encode(test_msg.astype(bool), cc1)
+    #     mod = comm.modulation.QAMModem(4)
+    #     output = mod.modulate(coded_message.astype(bool))
+    #     noise = (np.random.randn(len(output)) + 1j * np.random.randn(len(output))) * 0.5
+    #     output += noise
+    #     output = viterbi_soft_decode(output)
+    #     assert np.array_equal(test_msg, output), "Failed"
+    test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
     symbols = [randint(0, 1) for i in range(32*8)]
-    print(test_case)
     output = WifiTransmitter(test_case, 2)
     begin_zero_padding, message, length_y = WifiReceiver(output, 2)
     print(begin_zero_padding, message, length_y)
