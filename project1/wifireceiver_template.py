@@ -94,7 +94,8 @@ def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
         viterbi_stage(states, signal, expected_symbols)
 
     # should end on state 00. and we need to shave off the last two 0 bits
-    return np.array(states[0]["path"][:-3])
+    return np.array(states[0]["path"])
+    # return np.array(states[0]["path"][:-3])
 
 
 def WifiReceiver(input_stream, level):
@@ -132,19 +133,19 @@ def WifiReceiver(input_stream, level):
 
         #majority rules length_buts
         length_bits = []
-        for i in range(0, 128, 3):
+        for i in range(0, 2*nfft, 3):
             length_bits.append(int(input_stream[i] + input_stream[i+1] + input_stream[i+2] >= 2))
         length_bits = np.array(length_bits)
         length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
         
         # get message bits and padding size
-        message_bits = input_stream[128:]
-        padding_size = 128 * math.ceil((length * 8)/128)
+        message_bits = input_stream[2*nfft:]
+        padding_size = 2*nfft * math.ceil((length * 8)/(2*nfft))
         deleaved_bits = []
 
         # deinterleave bits
         for i in range(padding_size//4): 
-            block_start = (i // 32) * 128
+            block_start = (i // 32) * 2*nfft
             offset = i % 32
             deleaved_bits.append(int(message_bits[block_start + offset]))
             deleaved_bits.append(int(message_bits[block_start + offset + 32]))
@@ -156,7 +157,7 @@ def WifiReceiver(input_stream, level):
         for num in sorted_deleaved:
             message += chr(num)
             
-        return begin_zero_padding, message, length
+        return begin_zero_padding, message[:length], length
 
     raise Exception("Error: Unsupported level")
 
@@ -164,21 +165,10 @@ def WifiReceiver(input_stream, level):
 # for testing purpose
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
-    # for testing the viterbi decoder
-    # for i in range(100):
-    #     test_msg = np.random.default_rng().integers(0, 2, size=1000)
-    #     cc1 = check.Trellis(np.array([3]),np.array([[0o7,0o5]]))
-    #     coded_message = check.conv_encode(test_msg.astype(bool), cc1)
-    #     mod = comm.modulation.QAMModem(4)
-    #     output = mod.modulate(coded_message.astype(bool))
-    #     noise = (np.random.randn(len(output)) + 1j * np.random.randn(len(output))) * 0.5
-    #     output += noise
-    #     output = viterbi_soft_decode(output)
-    #     assert np.array_equal(test_msg, output), "Failed"
-    test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    symbols = [randint(0, 1) for i in range(32*8)]
-    output = WifiTransmitter(test_case, 2)
-    begin_zero_padding, message, length_y = WifiReceiver(output, 2)
+    # test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
+    test_case = 'hello!'
+    output = WifiTransmitter(test_case, 1)
+    begin_zero_padding, message, length_y = WifiReceiver(output, 1)
     print(test_case)
     print(begin_zero_padding, message, length_y)
     print(test_case == message)
