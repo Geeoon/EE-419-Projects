@@ -8,6 +8,13 @@ from pip import main
 import matplotlib.pyplot as plt
 import math
 
+def bits_to_symbols(bits: np.ndarray) -> np.ndarray:
+    assert (len(bits) % 2) == 0, "bits not in pairs"
+    out = np.zeros(len(bits) // 2, dtype=np.complex128)
+    out += (bits.reshape(2, -1)[0] * 2) - 1
+    out += (bits.reshape(2, -1)[1] * 2j) - 1j
+    return out
+
 def expected_output(state: int, in_bit: int) -> complex:
     """
     Computes the expected output the Viterbi algorithm given the current state
@@ -110,8 +117,22 @@ def WifiReceiver(input_stream, level):
     length=0
 
     if level >= 4:
+        print("asdf", input_stream)
         #Input QAM modulated + Encoded Bits + OFDM Symbols in a long stream
         #Output Detected Packet set of symbols
+        # convert preamble to symbols
+        kernel = bits_to_symbols(preamble)
+        # perform IFFT on preamble symbols
+        kernel = np.fft.ifft(kernel)
+        # perform correlation to find the preamble index
+        input_stream = input_stream[1]
+        correlation = np.correlate(input_stream, kernel, mode='same')
+        threshold = np.abs(np.sum(kernel ** 2)) * 0.975
+        indices = np.where(np.abs(correlation) > threshold)[0]
+        begin_zero_padding = 11
+        begin_zero_padding += indices[0] if len(indices) else np.argmax(correlation)
+        # trim the message
+        input_stream = input_stream[begin_zero_padding-1:]
         input_stream=input_stream
 
     if level >= 3:
