@@ -6,6 +6,7 @@ import commpy as comm
 import commpy.channelcoding.convcode as check
 from pip import main
 import matplotlib.pyplot as plt
+import math
 
 def expected_output(state: int, in_bit: int) -> complex:
     """
@@ -126,6 +127,35 @@ def WifiReceiver(input_stream, level):
     if level >= 1:
         #Input Interleaved bits + Encoded Length
         #Output Deinterleaved bits
+
+        # find length and convert to int
+
+        #majority rules length_buts
+        length_bits = []
+        for i in range(0, 128, 3):
+            length_bits.append(int(input_stream[i] + input_stream[i+1] + input_stream[i+2] >= 2))
+        length_bits = np.array(length_bits)
+        length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
+        
+        # get message bits and padding size
+        message_bits = input_stream[128:]
+        padding_size = 128 * math.ceil((length * 8)/128)
+        deleaved_bits = []
+
+        # deinterleave bits
+        for i in range(padding_size//4): 
+            block_start = (i // 32) * 128
+            offset = i % 32
+            deleaved_bits.append(int(message_bits[block_start + offset]))
+            deleaved_bits.append(int(message_bits[block_start + offset + 32]))
+            deleaved_bits.append(int(message_bits[block_start + offset + 64]))
+            deleaved_bits.append(int(message_bits[block_start + offset + 96]))
+            
+        # convert message bits to ascii
+        sorted_deleaved = np.packbits(deleaved_bits)
+        for num in sorted_deleaved:
+            message += chr(num)
+            
         return begin_zero_padding, message, length
 
     raise Exception("Error: Unsupported level")
@@ -149,5 +179,6 @@ if __name__ == "__main__":
     symbols = [randint(0, 1) for i in range(32*8)]
     output = WifiTransmitter(test_case, 2)
     begin_zero_padding, message, length_y = WifiReceiver(output, 2)
+    print(test_case)
     print(begin_zero_padding, message, length_y)
     print(test_case == message)
