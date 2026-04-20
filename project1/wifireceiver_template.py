@@ -10,9 +10,8 @@ import math
 
 def bits_to_symbols(bits: np.ndarray) -> np.ndarray:
     assert (len(bits) % 2) == 0, "bits not in pairs"
-    out = np.zeros(len(bits) // 2, dtype=np.complex128)
-    out += (bits.reshape(2, -1)[0] * 2) - 1
-    out += (bits.reshape(2, -1)[1] * 2j) - 1j
+    pairs = bits.reshape(-1, 2)
+    out = (pairs[:, 0] * 2 - 1) + (pairs[:, 1] * 2 - 1) * 1j
     return out
 
 def qam_demodulate(symbols: np.ndarray) -> np.ndarray:
@@ -127,20 +126,20 @@ def WifiReceiver(input_stream, level):
     length=0
 
     if level >= 4:
+        # input_stream = input_stream[1]
         #Input QAM modulated + Encoded Bits + OFDM Symbols in a long stream
         #Output Detected Packet set of symbols
         # convert preamble to symbols
         kernel = bits_to_symbols(preamble)
         # perform IFFT on preamble symbols
         kernel = np.fft.ifft(kernel)
+        
         # perform correlation to find the preamble index
-        input_stream = input_stream[1]
-
-        convolved = np.correlate(input_stream, kernel, mode='valid')
-        preamble_symbols_energy = np.sum(np.abs(kernel) ** 2)
-        threshold = preamble_symbols_energy * 0.99999
-        indices = np.where(np.abs(convolved) > threshold)[0]
-        begin_zero_padding = indices[0] if len(indices) else np.argmax(np.abs(convolved))
+        correlation = np.correlate(input_stream, kernel, mode='full')
+        threshold = np.abs(np.sum(kernel ** 2)) * 0.9
+        indices = np.where(np.abs(correlation) > threshold)[0]
+        begin_zero_padding = indices[0] if len(indices) else np.argmax(correlation)
+        begin_zero_padding -= 9
 
         # trim the beginning zeros
         input_stream = input_stream[begin_zero_padding:]
@@ -155,8 +154,6 @@ def WifiReceiver(input_stream, level):
         # trim the trailing zeros
         len_minus_preamble = 2*nfft + (math.floor((length * 8) / (2*nfft)) + 1) * 2*nfft
         input_stream=input_stream[:len(kernel) + len_minus_preamble]
-        print("Received pad:", begin_zero_padding)
-        print("hm", len(input_stream), length, length_bits)
 
     if level >= 3:
 
@@ -187,7 +184,6 @@ def WifiReceiver(input_stream, level):
             length_bits.append(int(length_bits_raw[i] + length_bits_raw[i+1] + length_bits_raw[i+2] >= 2))
         length_bits = np.array(length_bits)
         length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
-        print(length)
         
         # get message bits and padding size
         message_bits = input_stream[2*nfft:]
@@ -219,9 +215,9 @@ def WifiReceiver(input_stream, level):
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
     test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    for i in range(1, len(test_case)):
+    for i in range(0, len(test_case)):
         output = WifiTransmitter(test_case[:i], 4)
-        begin_zero_padding, message, length_y = WifiReceiver(output, 4)
+        begin_zero_padding, message, length_y = WifiReceiver(output[1], 4)
         print(test_case[:i])
         print(begin_zero_padding, message, length_y)
         print(test_case[:i] == message)

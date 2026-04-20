@@ -46,7 +46,6 @@ def WifiTransmitter(*args):
         # repetitive encoding for the length field
         length_encoded = ''.join([b+b+b for b in np.binary_repr(length)])
         len_binary = np.array(list(length_encoded.zfill(2*nfft))).astype(np.int8)
-        print(len(len_binary), len(output))
         output = np.concatenate((len_binary, output))
     
     if level >= 2:
@@ -60,7 +59,6 @@ def WifiTransmitter(*args):
         
     if level >= 3:
         nsym = int(len(output)/nfft)
-        print(len(output), nsym)
         for i in range(nsym):
             symbol = output[i*nfft:(i+1)*nfft]
             output[i*nfft:(i+1)*nfft] = np.fft.ifft(symbol)
@@ -71,7 +69,6 @@ def WifiTransmitter(*args):
         noise_pad_end = np.zeros(np.random.randint(1,1000))
         output = np.concatenate((noise_pad_begin,output,noise_pad_end))
         output = comm.channels.awgn(output,snr)
-        print("Actual pad:", noise_pad_begin_length)
         return noise_pad_begin_length, output, length
             
     return output
