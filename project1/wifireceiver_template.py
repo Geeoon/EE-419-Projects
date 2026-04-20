@@ -136,7 +136,7 @@ def WifiReceiver(input_stream, level):
         
         # perform correlation to find the preamble index
         correlation = np.correlate(input_stream, kernel, mode='full')
-        threshold = np.abs(np.sum(kernel ** 2)) * 0.9
+        threshold = np.abs(np.sum(kernel ** 2)) * 0.79
         indices = np.where(np.abs(correlation) > threshold)[0]
         begin_zero_padding = indices[0] if len(indices) else np.argmax(correlation)
         begin_zero_padding -= 9
