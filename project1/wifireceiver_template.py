@@ -135,11 +135,13 @@ def WifiReceiver(input_stream, level):
         kernel = np.fft.ifft(kernel)
         # perform correlation to find the preamble index
         input_stream = input_stream[1]
-        correlation = np.correlate(input_stream, kernel, mode='same')
-        threshold = np.abs(np.sum(kernel ** 2)) * 0.975
-        indices = np.where(np.abs(correlation) > threshold)[0]
-        begin_zero_padding = 11
-        begin_zero_padding += indices[0] if len(indices) else np.argmax(correlation)
+
+        convolved = np.correlate(input_stream, kernel, mode='valid')
+        preamble_symbols_energy = np.sum(np.abs(kernel) ** 2)
+        threshold = preamble_symbols_energy * 0.99999
+        indices = np.where(np.abs(convolved) > threshold)[0]
+        begin_zero_padding = indices[0] if len(indices) else np.argmax(np.abs(convolved))
+
         # trim the beginning zeros
         input_stream = input_stream[begin_zero_padding:]
         # get length
@@ -152,9 +154,9 @@ def WifiReceiver(input_stream, level):
         length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
         # trim the trailing zeros
         len_minus_preamble = 2*nfft + (math.floor((length * 8) / (2*nfft)) + 1) * 2*nfft
-        print(len_minus_preamble)
         input_stream=input_stream[:len(kernel) + len_minus_preamble]
-        print("hm", len(input_stream), length)
+        print("Received pad:", begin_zero_padding)
+        print("hm", len(input_stream), length, length_bits)
 
     if level >= 3:
 
@@ -217,8 +219,7 @@ def WifiReceiver(input_stream, level):
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
     test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    for i in range(1000):
-        i = 10
+    for i in range(1, len(test_case)):
         output = WifiTransmitter(test_case[:i], 4)
         begin_zero_padding, message, length_y = WifiReceiver(output, 4)
         print(test_case[:i])
