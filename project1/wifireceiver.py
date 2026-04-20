@@ -8,13 +8,13 @@ from pip import main
 import matplotlib.pyplot as plt
 import math
 
-def bits_to_symbols(bits: np.ndarray) -> np.ndarray:
+def bits_to_symbols(bits):
     assert (len(bits) % 2) == 0, "bits not in pairs"
     pairs = bits.reshape(-1, 2)
     out = (pairs[:, 0] * 2 - 1) + (pairs[:, 1] * 2 - 1) * 1j
     return out
 
-def qam_demodulate(symbols: np.ndarray) -> np.ndarray:
+def qam_demodulate(symbols):
     """
     Demodulates 4-QAM symbols
     :param symbols: the complex QAM modulated symbols
@@ -23,7 +23,7 @@ def qam_demodulate(symbols: np.ndarray) -> np.ndarray:
     bit1s = (symbols.imag > 0).astype(np.uint8)
     return np.stack([bit0s, bit1s], axis=1).ravel()
 
-def expected_output(state: int, in_bit: int) -> complex:
+def expected_output(state, in_bit):
     """
     Computes the expected output the Viterbi algorithm given the current state
     and the current input bit
@@ -41,9 +41,9 @@ def expected_output(state: int, in_bit: int) -> complex:
     out += ((((state & (1 << 1)) >> 1) ^ in_bit) * 2j) - 1j
     return out
 
-def viterbi_stage(states: list[dict],
-                  recv: np.complex128,
-                  expected_outputs: np.ndarray):
+def viterbi_stage(states,
+                  recv,
+                  expected_outputs):
     """
     Computes a stage of the Viterbi algorithm.  Modifies states
     :param states: the current weights of the states (and how we got there)
@@ -73,7 +73,7 @@ def viterbi_stage(states: list[dict],
             new_states[cur_state]["path"] = states[p_state1]["path"] + [in_bit]
     states[:] = new_states            
 
-def viterbi_soft_decode(input_signal: np.ndarray) -> np.ndarray:
+def viterbi_soft_decode(input_signal):
     """
     Soft decoder for the Viterbi algorithm
     :param input_signal: the QAM modulated convolutional code
@@ -215,19 +215,20 @@ def WifiReceiver(input_stream, level, threshold_mult=1.04):
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
     test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    TRIALS = 1000
-    for j in range(20):
-        success = 0
-        threshold = 0.90 + j/100
-        for i in range(TRIALS):
-            output = WifiTransmitter(test_case, 4, 100)
-            try:
-                begin_zero_padding, message, length_y = WifiReceiver(output[1], 4, threshold)
-            except:
-                continue
-            # print(test_case)
-            # print(begin_zero_padding, message, length_y)
-            # print(test_case == message)
-            success += int(test_case == message)
-        print("For threhold constant of", threshold)
-        print("Success rate:", success / TRIALS)
+    TRIALS = 100
+    # for j in range(20):
+    #     success = 0
+    #     threshold = 0.90 + j/100
+    success = 0
+    for i in range(TRIALS):
+        output = WifiTransmitter(test_case, 4, 20)
+        try:
+            begin_zero_padding, message, length_y = WifiReceiver(output[1], 4)
+        except:
+            continue
+        # print(test_case)
+        # print(begin_zero_padding, message, length_y)
+        # print(test_case == message)
+        success += int(test_case == message)
+        # print("For threhold constant of", threshold)
+    print("Success rate:", success / TRIALS)
