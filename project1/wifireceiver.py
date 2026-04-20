@@ -113,7 +113,7 @@ def viterbi_soft_decode(input_signal):
     # return np.array(states[0]["path"][:-3])
 
 
-def WifiReceiver(input_stream, level, threshold_mult=1.04):
+def WifiReceiver(input_stream, level, threshold_mult=1.06):
 
     nfft = 64
     Interleave_tr = np.reshape(np.transpose(np.reshape(np.arange(1, 2*nfft+1, 1),[4,-1])),[-1,])
@@ -145,7 +145,7 @@ def WifiReceiver(input_stream, level, threshold_mult=1.04):
         input_stream = input_stream[begin_zero_padding:]
         # get length
         length_demod = np.fft.fft(input_stream[len(kernel):len(kernel)+nfft])
-        length_demod = np.concat([[0], qam_demodulate(length_demod)])
+        length_demod = np.concatenate([[0], qam_demodulate(length_demod)])
         length_bits = []
         for i in range(0, 2*nfft, 3):
             length_bits.append(int(length_demod[i] + length_demod[i+1] + length_demod[i+2] >= 2))
@@ -178,7 +178,7 @@ def WifiReceiver(input_stream, level, threshold_mult=1.04):
         # find length and convert to int
 
         #majority rules length_buts
-        length_bits_raw = np.concat([[0], input_stream[:2*nfft]])  # extra zero needed at front
+        length_bits_raw = np.concatenate([[0], input_stream[:2*nfft]])  # extra zero needed at front
         length_bits = []
         for i in range(0, 2*nfft, 3):
             length_bits.append(int(length_bits_raw[i] + length_bits_raw[i+1] + length_bits_raw[i+2] >= 2))
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     #     threshold = 0.90 + j/100
     success = 0
     for i in range(TRIALS):
-        output = WifiTransmitter(test_case, 4, 20)
+        output = WifiTransmitter(test_case, 4, 15)
         try:
             begin_zero_padding, message, length_y = WifiReceiver(output[1], 4)
         except:
