@@ -46,6 +46,7 @@ def WifiTransmitter(*args):
         # repetitive encoding for the length field
         length_encoded = ''.join([b+b+b for b in np.binary_repr(length)])
         len_binary = np.array(list(length_encoded.zfill(2*nfft))).astype(np.int8)
+        print(len(len_binary), len(output))
         output = np.concatenate((len_binary, output))
     
     if level >= 2:
@@ -55,9 +56,11 @@ def WifiTransmitter(*args):
         output = np.concatenate((preamble, output))
         mod = comm.modulation.QAMModem(4)
         output = mod.modulate(output.astype(bool))
+
         
     if level >= 3:
         nsym = int(len(output)/nfft)
+        print(len(output), nsym)
         for i in range(nsym):
             symbol = output[i*nfft:(i+1)*nfft]
             output[i*nfft:(i+1)*nfft] = np.fft.ifft(symbol)

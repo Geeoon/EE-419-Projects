@@ -127,7 +127,6 @@ def WifiReceiver(input_stream, level):
     length=0
 
     if level >= 4:
-        print("asdf", input_stream)
         #Input QAM modulated + Encoded Bits + OFDM Symbols in a long stream
         #Output Detected Packet set of symbols
         # convert preamble to symbols
@@ -141,16 +140,28 @@ def WifiReceiver(input_stream, level):
         indices = np.where(np.abs(correlation) > threshold)[0]
         begin_zero_padding = 11
         begin_zero_padding += indices[0] if len(indices) else np.argmax(correlation)
-        # trim the message
-        input_stream = input_stream[begin_zero_padding-1:]
-        input_stream=input_stream
+        # trim the beginning zeros
+        input_stream = input_stream[begin_zero_padding:]
+        # get length
+        length_demod = np.fft.fft(input_stream[len(kernel):len(kernel)+nfft])
+        length_demod = np.concat([[0], qam_demodulate(length_demod)])
+        length_bits = []
+        for i in range(0, 2*nfft, 3):
+            length_bits.append(int(length_demod[i] + length_demod[i+1] + length_demod[i+2] >= 2))
+        length_bits = np.array(length_bits)
+        length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
+        # trim the trailing zeros
+        len_minus_preamble = 2*nfft + (math.floor((length * 8) / (2*nfft)) + 1) * 2*nfft
+        print(len_minus_preamble)
+        input_stream=input_stream[:len(kernel) + len_minus_preamble]
+        print("hm", len(input_stream), length)
 
     if level >= 3:
 
         nsym = int(len(input_stream)/nfft)      
         for i in range(nsym):
             symbol = input_stream[i*nfft:(i+1)*nfft]
-            output[i*nfft:(i+1)*nfft] = np.fft.fft(symbol)
+            input_stream[i*nfft:(i+1)*nfft] = np.fft.fft(symbol)
 
         input_stream=input_stream
     
@@ -168,11 +179,13 @@ def WifiReceiver(input_stream, level):
         # find length and convert to int
 
         #majority rules length_buts
+        length_bits_raw = np.concat([[0], input_stream[:2*nfft]])  # extra zero needed at front
         length_bits = []
         for i in range(0, 2*nfft, 3):
-            length_bits.append(int(input_stream[i] + input_stream[i+1] + input_stream[i+2] >= 2))
+            length_bits.append(int(length_bits_raw[i] + length_bits_raw[i+1] + length_bits_raw[i+2] >= 2))
         length_bits = np.array(length_bits)
         length = int(length_bits.dot(2**np.arange(length_bits.size)[::-1]))
+        print(length)
         
         # get message bits and padding size
         message_bits = input_stream[2*nfft:]
@@ -189,9 +202,11 @@ def WifiReceiver(input_stream, level):
             deleaved_bits.append(int(message_bits[block_start + offset + 96]))
             
         # convert message bits to ascii
-        sorted_deleaved = np.packbits(deleaved_bits)
-        for num in sorted_deleaved:
-            message += chr(num)
+        if deleaved_bits:
+            sorted_deleaved = np.packbits(deleaved_bits)
+            for num in sorted_deleaved:
+                message += chr(num)
+        
             
         return begin_zero_padding, message[:length], length
 
@@ -201,10 +216,12 @@ def WifiReceiver(input_stream, level):
 # for testing purpose
 from wifitransmitter import WifiTransmitter
 if __name__ == "__main__":
-    # test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
-    test_case = 'hello!'
-    output = WifiTransmitter(test_case, 3)
-    begin_zero_padding, message, length_y = WifiReceiver(output, 3)
-    print(test_case)
-    print(begin_zero_padding, message, length_y)
-    print(test_case == message)
+    test_case = 'The Internet has transformed our everyday lives, bringing people closer together and powering multi-billion dollar industries. The mobile revolution has brought Internet connectivity to the last-mile, connecting billions of users worldwide. But how does the Internet work? What do oft repeated acronyms like "LTE", "TCP", "WWW" or a "HTTP" actually mean and how do they work? This course introduces fundamental concepts of computer networks that form the building blocks of the Internet. We trace the journey of messages sent over the Internet from bits in a computer or phone to packets and eventually signals over the air or wires. We describe commonalities and differences between traditional wired computer networks from wireless and mobile networks. Finally, we build up to exciting new trends in computer networks such as the Internet of Things, 5-G and software defined networking. Topics include: physical layer and coding (CDMA, OFDM, etc.); data link protocol; flow control, congestion control, routing; local area networks (Ethernet, Wi-Fi, etc.); transport layer; and introduction to cellular (LTE) and 5-G networks. The course will be graded based on quizzes (on canvas), a midterm and final exam and four projects (all individual). '
+    for i in range(1000):
+        i = 10
+        output = WifiTransmitter(test_case[:i], 4)
+        begin_zero_padding, message, length_y = WifiReceiver(output, 4)
+        print(test_case[:i])
+        print(begin_zero_padding, message, length_y)
+        print(test_case[:i] == message)
+        assert test_case[:i] == message
