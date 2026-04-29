@@ -26,32 +26,31 @@ UPSTREAM_PORT_NUMBER = 1111 # socket number for UL transmission
 
 class Content_server():
     def __init__(self, conf_file_addr):
+        self.map = {}
         # load and read configuration file
         with open(conf_file_addr, "r") as f:
-            line = f.readline().strip()
-            values = line.split(" ")
-            if values[0] == "uuid":
-                self.uuid = values[-1]
-            elif values[0] == "name":
-                self.name = values[-1]
-            elif values[0] == "backend_port":
-                self.backend_port = values[-1]
-            elif values[0] == "peer_count":
-                self.peer_count = values[-1]
-            else:
-                # peer_#
-                # spec states only that it will be seperated by commas, not commas and spaces, so we need to do some weird stuff
-                peer_vals = line.split("=")[-1].strip().split(",")
-                # what do we do with the UUID?
-                name = values[0]
-                uuid = peer_vals[0].strip()
-                hostname = peer_vals[1].strip()
-                port = peer_vals[2].strip()
-                metric = peer_vals[3].strip()
-                # self.addneighbor()
-                pass
-
-        
+            for line in f:
+                line = line.strip()
+                values = line.split(" ")
+                if values[0] == "uuid":
+                    self.uuid = values[-1]
+                elif values[0] == "name":
+                    self.name = values[-1]
+                elif values[0] == "backend_port":
+                    self.backend_port = values[-1]
+                elif values[0] == "peer_count":
+                    self.peer_count = values[-1]
+                else:
+                    # peer_#
+                    # spec states only that it will be seperated by commas, not commas and spaces, so we need to do some weird stuff
+                    peer_vals = line.split("=")[-1].strip().split(",")
+                    # TODO: ask about the name 
+                    name = values[0]
+                    uuid = peer_vals[0].strip()  # uuid?
+                    hostname = peer_vals[1].strip()
+                    port = peer_vals[2].strip()
+                    metric = peer_vals[3].strip()
+                    self.addneighbor(hostname, port, metric)
         # create the receive socket
         self.dl_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.dl_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -74,7 +73,7 @@ class Content_server():
         self.alive()
     
     def addneighbor(self, host, backend_port, metric):
-        # Add neighbor code goes here
+        # self.map[]
         pass
     
     def link_state_adv(self):
@@ -111,7 +110,6 @@ class Content_server():
                 # print("received", connection_socket, client_address, msg_string)
             except socket.timeout:
                 msg_string = ""
-                pass
 
             if msg_string == "":    # empty message
                 pass
