@@ -27,11 +27,36 @@ UPSTREAM_PORT_NUMBER = 1111 # socket number for UL transmission
 class Content_server():
     def __init__(self, conf_file_addr):
         # load and read configuration file
+        with open(conf_file_addr, "r") as f:
+            line = f.readline().strip()
+            values = line.split(" ")
+            if values[0] == "uuid":
+                self.uuid = values[-1]
+            elif values[0] == "name":
+                self.name = values[-1]
+            elif values[0] == "backend_port":
+                self.backend_port = values[-1]
+            elif values[0] == "peer_count":
+                self.peer_count = values[-1]
+            else:
+                # peer_#
+                # spec states only that it will be seperated by commas, not commas and spaces, so we need to do some weird stuff
+                peer_vals = line.split("=")[-1].strip().split(",")
+                # what do we do with the UUID?
+                name = values[0]
+                uuid = peer_vals[0].strip()
+                hostname = peer_vals[1].strip()
+                port = peer_vals[2].strip()
+                metric = peer_vals[3].strip()
+                # self.addneighbor()
+                pass
+
         
         # create the receive socket
         self.dl_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.dl_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.dl_socket.bind(("", BACKEND PORT)) #YOU NEED TO READ THIS FROM CONFIGURATION FILE
+        # TODO: ask about the listen address, no example included
+        self.dl_socket.bind(("0.0.0.0", self.backend_port)) #YOU NEED TO READ THIS FROM CONFIGURATION FILE
         self.dl_socket.listen(100)
 
         # Create all the data structures to store various variables
@@ -47,34 +72,33 @@ class Content_server():
 
         self.remain_threads = True
         self.alive()
-        return
     
     def addneighbor(self, host, backend_port, metric):
         # Add neighbor code goes here
-        return;
+        pass
     
     def link_state_adv(self):
         while self.remain_threads:
             # Perform Link State Advertisement to all your neighbors periodically 
-            ;
-        return
+            pass
+        pass
 
     
     def link_state_flood(self, send_time, host, msg):
         # If new information then send to all your neighbors, if old information then drop.
-        return
+        pass
     
     def dead_adv(self, peer):
         # Advertise death before kill
-        return
+        pass
     
     def dead_flood(self, send_time, host, peer):
         # Forward the death message information to other peers
-        return
+        pass
 
     def keep_alive(self):
         # Tell that you are alive to all your neighbors, periodically.
-        return
+        pass
     
    
    ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
@@ -127,16 +151,22 @@ class Content_server():
             if command == "kill":
                 # Send death message
                 # Kill all threads
+                pass
             elif command == "uuid":
                 # Print UUID
+                pass
             elif command == "neighbors":
                 # Print Neighbor information
+                pass
             elif command == "addneighbor":
                 # Update Neighbor List with new neighbor
+                pass
             elif command == "map":
                 # Print Map
+                pass
             elif command == "rank": 
                 # Compute and print the rank
+                pass
 
 if __name__ == "__main__":
     content_sever = Content_server(sys.argv[2])
