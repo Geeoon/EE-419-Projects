@@ -2,7 +2,6 @@
 
 docker compose build
 docker compose up -d
-docker inspect -f '{{.Name}} - {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $(docker ps -q)
 
 S=sim_session
 tmux kill-session -t $S 2>/dev/null

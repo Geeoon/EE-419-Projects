@@ -72,7 +72,7 @@ class Content_server():
         # create the receive socket
         self.dl_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.dl_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # TODO: ask about the listen address, no example included
+        # TODO: ask about the listen address, no example included, assuming all addresses
         self.dl_socket.bind(("0.0.0.0", self.backend_port))
         self.dl_socket.listen(100)
 
@@ -103,13 +103,14 @@ class Content_server():
         # If new information then send to all your neighbors, if old information then drop.
         pass
     
-    def dead_adv(self, peer):
-        # Advertise death before kill
-        pass
+    def dead_adv(self, host, port):
+        self._send_msg(host, port, f"D{json.dumps({"uuid": self.uuid})}")
     
-    def dead_flood(self, send_time, host, peer):
-        # Forward the death message information to other peers
-        pass
+    def flood(self, msg):
+        # send a message to all peers
+        alive_peers = self.get_alive_peers()
+        for peer in alive_peers.values():
+            self._send_msg(peer["host"], peer["port"], msg)
 
     def _send_msg(self, host, port, msg):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -117,7 +118,7 @@ class Content_server():
             sock.connect((host, port))
             sock.send(msg.encode())
             sock.close()
-        except socket.error as e:
+        except socket.error:
             pass  # host unreachable
 
     def keep_alive(self):
@@ -129,11 +130,12 @@ class Content_server():
                 "port": self.backend_port,
                 "metric": 0  # TODO: ?
             }
-            with self.peers_lock:
-                for peer in self.peers.values():
-                    self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
+            alive_peers = self.get_alive_peers()
+            for peer in alive_peers.values():
+                self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
             time.sleep(ALIVE_SGN_INTERVAL)
-   ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
+    
+    ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
     def listen(self):
         self.dl_socket.settimeout(0.1)  # for killing the application
         while self.remain_threads:
@@ -147,48 +149,56 @@ class Content_server():
                 continue
             
             opcode = msg_string[0]
-            data = msg_string[1:]
+            data = json.loads(msg_string[1:])
             if opcode == "A": # Update the timeout time if known node, otherwise add new neighbor
                 # receive keepAlive as JSON
-                ka_dict = json.loads(data)
                 with self.peers_lock:
-                    if ka_dict["uuid"] in self.peers:
-                        self.peers[ka_dict["uuid"]]["name"] = ka_dict["name"]
-                        self.peers[ka_dict["uuid"]]["last_alive"] = time.time()
+                    if data["uuid"] in self.peers:
+                        self.peers[data["uuid"]]["name"] = data["name"]
+                        self.peers[data["uuid"]]["last_alive"] = time.time()
                     else:
-                        self.peers[ka_dict["uuid"]] = {
-                            "name": ka_dict["name"],
+                        self.peers[data["uuid"]] = {
+                            "name": data["name"],
                             "host": client_address,
-                            "port": ka_dict["port"],
-                            "metric": ka_dict["metric"],  # TODO: ?
+                            "port": data["port"],
+                            "metric": data["metric"],  # TODO: ?
                             "last_alive": time.time()
                         }
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 pass
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
-                pass
-            # otherwise the msg is dropped
+                # forward to all our peers, unless we have already marked the node for death
+                alive_peers = self.get_alive_peers()
+                if data["uuid"] not in alive_peers:
+                    self.flood(msg_string[1:])
 
-    def timeout_old(self):
-        # drop the neighbors whose information is old
-        while self.remain_threads:
-            pass
+                # kill it
+                with self.peers_lock:
+                    # check if it exists
+                    if data["uuid"] in self.peers:
+                        self.peers[data["uuid"]]["last_alive"] = 0
+            # otherwise the msg is dropped
 
     def shortest_path(self):
         # derive the shortest path according to the current link state
         rank = {}
         return rank
-
     
+    def get_alive_peers(self):
+        out = {}
+        with self.peers_lock:
+            for uuid in self.peers:
+                if self.peers[uuid]["last_alive"] > time.time() - TIMEOUT_INTERVAL:
+                    out[uuid] = self.peers[uuid]
+        return out
+        
     def alive(self):
         keep_alive = threading.Thread(target=self.keep_alive) # A thread that keeps sending keep_alive messages
         listen = threading.Thread(target=self.listen) # A thread that keeps listening to incoming packets
-        timeout_old = threading.Thread(target=self.timeout_old) # A thread to eliminate old neighbors
         link_state_adv = threading.Thread(target=self.link_state_adv) # A thread that keeps doing link_state_adv
         keep_alive.start()
         listen.start()
-        timeout_old.start()
         link_state_adv.start()
         while self.remain_threads:
             time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle
@@ -197,7 +207,7 @@ class Content_server():
             # print("Received command: ", command)
             if command == "kill":
                 # Send death message
-                self.dead_adv()
+                self.flood(f"D{json.dumps({"uuid": self.uuid})}")
                 self.remain_threads = False
             elif command == "uuid":
                 print(json.dumps({"uuid":self.uuid}))
@@ -205,16 +215,16 @@ class Content_server():
                 out = {
                     "neighbors": {}
                 }
-                with self.peers_lock:
-                    for uuid in self.peers.keys():
-                        if self.peers[uuid]["name"]:
-                            # only list those that have names
-                            out["neighbors"][self.peers[uuid]["name"]] = {
-                                "uuid": uuid,
-                                "host": self.peers[uuid]["host"],
-                                "backend_port": self.peers[uuid]["port"],
-                                "metric": self.peers[uuid]["metric"]
-                            }
+                alive_peers = self.get_alive_peers()
+                for uuid in alive_peers:
+                    if alive_peers[uuid]["name"]:
+                        # only list those that have names
+                        out["neighbors"][alive_peers[uuid]["name"]] = {
+                            "uuid": uuid,
+                            "host": alive_peers[uuid]["host"],
+                            "backend_port": alive_peers[uuid]["port"],
+                            "metric": alive_peers[uuid]["metric"]
+                        }
                 print(json.dumps(out))
                 # Print Neighbor information
             elif command == "addneighbor":
