@@ -63,7 +63,7 @@ class Content_server():
 
         # generate uuid if it doesn't exist
         if not self.uuid:
-            self.uuid = uuid4()
+            self.uuid = str(uuid4())
 
         # Initialize link state advertisement that repeats using a neighbor variable
         # self.link_state_adv()  a seperate thread will do this

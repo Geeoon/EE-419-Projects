@@ -35,6 +35,18 @@ services:
     stdin_open: true
     tty: true
     stop_grace_period: 0.5s
+  ee419p2sim-4:
+    image: ee419p2sim-4:latest
+    container_name: ee419p2sim-4
+    networks:
+      ee419p2-network:
+        ipv4_address: 10.1.0.4
+    build:
+      context: ../
+      dockerfile: ./sim/sim4/Dockerfile
+    stdin_open: true
+    tty: true
+    stop_grace_period: 0.5s
 networks:
   ee419p2-network:
     driver: bridge
