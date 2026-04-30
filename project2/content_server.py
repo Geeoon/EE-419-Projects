@@ -117,7 +117,7 @@ class Content_server():
             sock.connect((host, port))
             sock.send(msg.encode())
             sock.close()
-        except socket.error:
+        except socket.error as e:
             pass  # host unreachable
 
     def keep_alive(self):
@@ -125,12 +125,14 @@ class Content_server():
         while self.remain_threads:
             data = {
                 "name": self.name,
+                "uuid": self.uuid,
                 "port": self.backend_port,
                 "metric": 0  # TODO: ?
             }
             with self.peers_lock:
                 for peer in self.peers.values():
                     self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
+            time.sleep(ALIVE_SGN_INTERVAL)
    ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
     def listen(self):
         self.dl_socket.settimeout(0.1)  # for killing the application
@@ -142,7 +144,7 @@ class Content_server():
                 msg_string = ""
 
             if not msg_string or len(msg_string) < 2:  # empty message
-                return
+                continue
             
             opcode = msg_string[0]
             data = msg_string[1:]
@@ -150,7 +152,7 @@ class Content_server():
                 # receive keepAlive as JSON
                 ka_dict = json.loads(data)
                 with self.peers_lock:
-                    if self.peers[ka_dict["uuid"]]:
+                    if ka_dict["uuid"] in self.peers:
                         self.peers[ka_dict["uuid"]]["name"] = ka_dict["name"]
                         self.peers[ka_dict["uuid"]]["last_alive"] = time.time()
                     else:
@@ -161,8 +163,6 @@ class Content_server():
                             "metric": ka_dict["metric"],  # TODO: ?
                             "last_alive": time.time()
                         }
-                    print(ka_dict)
-                    print(self.peers[ka_dict["uuid"]])
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 pass
@@ -212,7 +212,7 @@ class Content_server():
                             out["neighbors"][self.peers[uuid]["name"]] = {
                                 "uuid": uuid,
                                 "host": self.peers[uuid]["host"],
-                                "backend_port": self.peers[uuid]["backend_port"],
+                                "backend_port": self.peers[uuid]["port"],
                                 "metric": self.peers[uuid]["metric"]
                             }
                 print(json.dumps(out))
