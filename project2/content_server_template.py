@@ -2,6 +2,7 @@ import socket, sys
 import ast
 import threading, time
 import random
+from uuid import UUID, uuid4
 
 BUFSIZE = 1024  # size of receiving buffer
 ALIVE_SGN_INTERVAL = 0.5  # interval to send alive signal
@@ -26,7 +27,12 @@ UPSTREAM_PORT_NUMBER = 1111 # socket number for UL transmission
 
 class Content_server():
     def __init__(self, conf_file_addr):
-        self.map = {}
+        self.peers = {}
+        self.peers_lock = threading.Lock()
+        self.uuid = None
+        self.name = None
+        self.backend_port = None
+        self.peer_count = None
         # load and read configuration file
         with open(conf_file_addr, "r") as f:
             for line in f:
@@ -37,27 +43,41 @@ class Content_server():
                 elif values[0] == "name":
                     self.name = values[-1]
                 elif values[0] == "backend_port":
-                    self.backend_port = values[-1]
+                    self.backend_port = int(values[-1])
                 elif values[0] == "peer_count":
-                    self.peer_count = values[-1]
-                else:
-                    # peer_#
+                    self.peer_count = int(values[-1])
+                elif "peer_" in values[0]:
                     # spec states only that it will be seperated by commas, not commas and spaces, so we need to do some weird stuff
                     peer_vals = line.split("=")[-1].strip().split(",")
-                    # TODO: ask about the name 
-                    name = values[0]
-                    uuid = peer_vals[0].strip()  # uuid?
-                    hostname = peer_vals[1].strip()
-                    port = peer_vals[2].strip()
-                    metric = peer_vals[3].strip()
-                    self.addneighbor(hostname, port, metric)
+                    metric = int(peer_vals[-1].strip())  # guaranteed to be last
+                    for val in peer_vals[:-1]:
+                        stripped = val.strip()
+                        if stripped.isdecimal():
+                            port = int(stripped)
+                        else:
+                            # check if UUID
+                            try:
+                                temp = UUID(stripped)
+                                if not str(temp) == val: raise Exception()
+                                uuid = stripped
+                            except:
+                                # not a UUID
+                                hostname = stripped
+                    self.addneighbor(uuid, hostname, port, metric)
+                else:
+                    raise Exception("Unknown configuration:", values[0])
         # create the receive socket
         self.dl_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.dl_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # TODO: ask about the listen address, no example included
-        self.dl_socket.bind(("0.0.0.0", self.backend_port)) #YOU NEED TO READ THIS FROM CONFIGURATION FILE
+        self.dl_socket.bind(("0.0.0.0", self.backend_port))
         self.dl_socket.listen(100)
 
+        # generate uuid if it doesn't exist
+        if not self.uuid:
+            self.uuid = uuid4()
+
+        quit()
         # Create all the data structures to store various variables
         
         # Extract neighbor information and populate the initial variables
@@ -72,9 +92,14 @@ class Content_server():
         self.remain_threads = True
         self.alive()
     
-    def addneighbor(self, host, backend_port, metric):
-        # self.map[]
-        pass
+    def addneighbor(self, uuid, host, backend_port, metric):
+        with self.peers_lock:
+            self.peers[uuid] = {
+                "name": None,  # will be filled in from the keepAlive messages
+                "host": host,
+                "port": backend_port,
+                "metric": metric
+            }
     
     def link_state_adv(self):
         while self.remain_threads:
