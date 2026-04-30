@@ -10,21 +10,6 @@ ALIVE_SGN_INTERVAL = 0.5  # interval to send alive signal
 TIMEOUT_INTERVAL = 10*ALIVE_SGN_INTERVAL
 UPSTREAM_PORT_NUMBER = 1111 # socket number for UL transmission
 
-##
-#
-# FOR TRANSMITTING PACKET USE THE FOLLOWING CODE
-#
-#self.ul_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#try:
-#   self.ul_socket.connect((host, backend_port))
-#   self.ul_socket.send(("STRING TO SEND").encode())
-#   self.ul_socket.close()
-#except socket.error:
-#   pass
-#
-#
-#
-#
 
 class Content_server():
     def __init__(self, conf_file_addr):
@@ -81,7 +66,7 @@ class Content_server():
             self.uuid = uuid4()
 
         # Initialize link state advertisement that repeats using a neighbor variable
-        self.link_state_adv()
+        # self.link_state_adv()  a seperate thread will do this
         self.alive()
     
     def addneighbor(self, uuid, host, backend_port, metric):
@@ -103,9 +88,6 @@ class Content_server():
         # If new information then send to all your neighbors, if old information then drop.
         pass
     
-    def dead_adv(self, host, port):
-        self._send_msg(host, port, f"D{json.dumps({"uuid": self.uuid})}")
-    
     def flood(self, msg):
         # send a message to all peers
         alive_peers = self.get_alive_peers()
@@ -113,12 +95,17 @@ class Content_server():
             self._send_msg(peer["host"], peer["port"], msg)
 
     def _send_msg(self, host, port, msg):
+        t = threading.Thread(target=lambda: self._send_msg_worker(host, port, msg))
+        t.start()
+
+    def _send_msg_worker(self, host, port, msg):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(TIMEOUT_INTERVAL)
         try:
             sock.connect((host, port))
             sock.send(msg.encode())
             sock.close()
-        except socket.error:
+        except Exception as e:
             pass  # host unreachable
 
     def keep_alive(self):
@@ -130,9 +117,12 @@ class Content_server():
                 "port": self.backend_port,
                 "metric": 0  # TODO: ?
             }
-            alive_peers = self.get_alive_peers()
-            for peer in alive_peers.values():
-                self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
+            # send to all peers possible, not just alive ones
+            with self.peers_lock:
+                for peer in self.peers.values():
+                    print(f"Sending keep alive to {peer["host"]}")
+                    self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
+                    print(f"Done sending keep alive to {peer["host"]}")
             time.sleep(ALIVE_SGN_INTERVAL)
     
     ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
@@ -152,6 +142,7 @@ class Content_server():
             data = json.loads(msg_string[1:])
             if opcode == "A": # Update the timeout time if known node, otherwise add new neighbor
                 # receive keepAlive as JSON
+                print(f"Got a keep alive from {client_address[0]}")
                 with self.peers_lock:
                     if data["uuid"] in self.peers:
                         self.peers[data["uuid"]]["name"] = data["name"]
@@ -159,7 +150,7 @@ class Content_server():
                     else:
                         self.peers[data["uuid"]] = {
                             "name": data["name"],
-                            "host": client_address,
+                            "host": client_address[0],
                             "port": data["port"],
                             "metric": data["metric"],  # TODO: ?
                             "last_alive": time.time()
@@ -204,7 +195,6 @@ class Content_server():
             time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle
             command_line = input().split(" ")
             command = command_line[0]
-            # print("Received command: ", command)
             if command == "kill":
                 # Send death message
                 self.flood(f"D{json.dumps({"uuid": self.uuid})}")
