@@ -3,6 +3,7 @@ import ast
 import threading, time
 import random
 from uuid import UUID, uuid4
+import json
 
 BUFSIZE = 1024  # size of receiving buffer
 ALIVE_SGN_INTERVAL = 0.5  # interval to send alive signal
@@ -29,10 +30,12 @@ class Content_server():
     def __init__(self, conf_file_addr):
         self.peers = {}
         self.peers_lock = threading.Lock()
+        self.remain_threads = True
         self.uuid = None
         self.name = None
         self.backend_port = None
         self.peer_count = None
+
         # load and read configuration file
         with open(conf_file_addr, "r") as f:
             for line in f:
@@ -77,19 +80,8 @@ class Content_server():
         if not self.uuid:
             self.uuid = uuid4()
 
-        quit()
-        # Create all the data structures to store various variables
-        
-        # Extract neighbor information and populate the initial variables
-        
-        # Update the map 
-        
         # Initialize link state advertisement that repeats using a neighbor variable
         self.link_state_adv()
-
-        # print("Initial setting complete")
-
-        self.remain_threads = True
         self.alive()
     
     def addneighbor(self, uuid, host, backend_port, metric):
@@ -102,9 +94,7 @@ class Content_server():
             }
     
     def link_state_adv(self):
-        while self.remain_threads:
-            # Perform Link State Advertisement to all your neighbors periodically 
-            pass
+        # Perform Link State Advertisement to all your neighbors periodically 
         pass
 
     
@@ -122,7 +112,8 @@ class Content_server():
 
     def keep_alive(self):
         # Tell that you are alive to all your neighbors, periodically.
-        pass
+        while self.remain_threads:
+            pass
     
    
    ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
@@ -149,7 +140,8 @@ class Content_server():
 
     def timeout_old(self):
         # drop the neighbors whose information is old
-        print("a")
+        while self.remain_threads:
+            pass
 
     def shortest_path(self):
         # derive the shortest path according to the current link state
@@ -176,8 +168,7 @@ class Content_server():
                 # Kill all threads
                 pass
             elif command == "uuid":
-                # Print UUID
-                pass
+                print(json.dumps({"uuid":self.uuid}))
             elif command == "neighbors":
                 # Print Neighbor information
                 pass
