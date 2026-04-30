@@ -90,7 +90,8 @@ class Content_server():
                 "name": None,  # will be filled in from the keepAlive messages
                 "host": host,
                 "port": backend_port,
-                "metric": metric
+                "metric": metric,
+                "last_alive": time.time()
             }
     
     def link_state_adv(self):
@@ -110,12 +111,26 @@ class Content_server():
         # Forward the death message information to other peers
         pass
 
+    def _send_msg(self, host, port, msg):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect((host, port))
+            sock.send(msg.encode())
+            sock.close()
+        except socket.error:
+            pass  # host unreachable
+
     def keep_alive(self):
         # Tell that you are alive to all your neighbors, periodically.
         while self.remain_threads:
-            pass
-    
-   
+            data = {
+                "name": self.name,
+                "port": self.backend_port,
+                "metric": 0  # TODO: ?
+            }
+            with self.peers_lock:
+                for peer in self.peers.values():
+                    self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
    ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
     def listen(self):
         self.dl_socket.settimeout(0.1)  # for killing the application
@@ -123,18 +138,35 @@ class Content_server():
             try:
                 connection_socket, client_address = self.dl_socket.accept()
                 msg_string = connection_socket.recv(BUFSIZE).decode()
-                # print("received", connection_socket, client_address, msg_string)
             except socket.timeout:
                 msg_string = ""
 
-            if msg_string == "":    # empty message
-                pass
-            elif msg_string == "Alive message": # Update the timeout time if known node, otherwise add new neighbor
-                pass
-            elif msg_string == "Link State Packet":     # Update the map based on new information, drop if old information
+            if not msg_string or len(msg_string) < 2:  # empty message
+                return
+            
+            opcode = msg_string[0]
+            data = msg_string[1:]
+            if opcode == "A": # Update the timeout time if known node, otherwise add new neighbor
+                # receive keepAlive as JSON
+                ka_dict = json.loads(data)
+                with self.peers_lock:
+                    if self.peers[ka_dict["uuid"]]:
+                        self.peers[ka_dict["uuid"]]["name"] = ka_dict["name"]
+                        self.peers[ka_dict["uuid"]]["last_alive"] = time.time()
+                    else:
+                        self.peers[ka_dict["uuid"]] = {
+                            "name": ka_dict["name"],
+                            "host": client_address,
+                            "port": ka_dict["port"],
+                            "metric": ka_dict["metric"],  # TODO: ?
+                            "last_alive": time.time()
+                        }
+                    print(ka_dict)
+                    print(self.peers[ka_dict["uuid"]])
+            elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 pass
-            elif msg_string == "Death message": # Delete the node if it sends the message before executing kill.
+            elif opcode == "D": # Delete the node if it sends the message before executing kill.
                 pass
             # otherwise the msg is dropped
 
@@ -165,13 +197,26 @@ class Content_server():
             # print("Received command: ", command)
             if command == "kill":
                 # Send death message
-                # Kill all threads
-                pass
+                self.dead_adv()
+                self.remain_threads = False
             elif command == "uuid":
                 print(json.dumps({"uuid":self.uuid}))
             elif command == "neighbors":
+                out = {
+                    "neighbors": {}
+                }
+                with self.peers_lock:
+                    for uuid in self.peers.keys():
+                        if self.peers[uuid]["name"]:
+                            # only list those that have names
+                            out["neighbors"][self.peers[uuid]["name"]] = {
+                                "uuid": uuid,
+                                "host": self.peers[uuid]["host"],
+                                "backend_port": self.peers[uuid]["backend_port"],
+                                "metric": self.peers[uuid]["metric"]
+                            }
+                print(json.dumps(out))
                 # Print Neighbor information
-                pass
             elif command == "addneighbor":
                 # Update Neighbor List with new neighbor
                 pass

@@ -1,0 +1,38 @@
+services:
+  ee419p2sim-1:
+    image: ee419p2sim-1
+    networks:
+      ee419p2-network:
+        ipv4_address: 10.1.0.1
+    build:
+      context: ../
+      dockerfile: ./sim/sim1/Dockerfile
+    stdin_open: true
+    tty: true
+  ee419p2sim-2:
+    image: ee419p2sim-2
+    networks:
+      ee419p2-network:
+        ipv4_address: 10.1.0.2
+    build:
+      context: ../
+      dockerfile: ./sim/sim2/Dockerfile
+    stdin_open: true
+    tty: true
+  ee419p2sim-3:
+    image: ee419p2sim-3
+    networks:
+      ee419p2-network:
+        ipv4_address: 10.1.0.3
+    build:
+      context: ../
+      dockerfile: ./sim/sim3/Dockerfile
+    stdin_open: true
+    tty: true
+networks:
+  ee419p2-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/8
+          ip_range: 10.128.0.0/9
