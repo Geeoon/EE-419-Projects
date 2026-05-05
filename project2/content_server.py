@@ -20,6 +20,7 @@ class Content_server():
         self.name = None
         self.backend_port = None
         self.peer_count = None
+        self.tables = {}  # stores the peers of all other devices on the network
 
         # load and read configuration file
         with open(conf_file_addr, "r") as f:
@@ -57,7 +58,6 @@ class Content_server():
         # create the receive socket
         self.dl_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.dl_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # TODO: ask about the listen address, no example included, assuming all addresses
         self.dl_socket.bind(("0.0.0.0", self.backend_port))
         self.dl_socket.listen(100)
 
@@ -78,16 +78,20 @@ class Content_server():
                 "metric": metric,
                 "last_alive": time.time()
             }
+        self.link_state_flood()
     
     def link_state_adv(self):
         # Perform Link State Advertisement to all your neighbors periodically 
-        pass
+        while self.remain_threads:
+            self.link_state_flood()
+            time.sleep(TIMEOUT_INTERVAL)  # wait
 
     
-    def link_state_flood(self, send_time, host, msg):
-        # If new information then send to all your neighbors, if old information then drop.
-        pass
-    
+    def link_state_flood(self):
+        # send state to all neighbors
+        print("Link state flood!")
+        self.flood(f"L{json.dumps({"peers": self.get_alive_peers(), "time": time.time()})}")
+
     def flood(self, msg):
         # send a message to all peers
         alive_peers = self.get_alive_peers()
@@ -115,7 +119,7 @@ class Content_server():
                 "name": self.name,
                 "uuid": self.uuid,
                 "port": self.backend_port,
-                "metric": 0  # TODO: ?
+                # "metric": 0  # NOTE: do not need to consider
             }
             # send to all peers possible, not just alive ones
             with self.peers_lock:
@@ -148,13 +152,15 @@ class Content_server():
                         self.peers[data["uuid"]]["name"] = data["name"]
                         self.peers[data["uuid"]]["last_alive"] = time.time()
                     else:
-                        self.peers[data["uuid"]] = {
-                            "name": data["name"],
-                            "host": client_address[0],
-                            "port": data["port"],
-                            "metric": data["metric"],  # TODO: ?
-                            "last_alive": time.time()
-                        }
+                        # NOTE: no need to consider this
+                        continue
+                        # self.peers[data["uuid"]] = {
+                        #     "name": data["name"],
+                        #     "host": client_address[0],
+                        #     "port": data["port"],
+                        #     # "metric": data["metric"],
+                        #     "last_alive": time.time()
+                        # }
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 pass
@@ -219,7 +225,48 @@ class Content_server():
                 # Print Neighbor information
             elif command == "addneighbor":
                 # Update Neighbor List with new neighbor
-                pass
+                # parse command parameters
+                new_uuid = None
+                new_host = None
+                new_backend_port = None
+                new_metric = None
+                for item in command_line[1:]:
+                    if len(item) < 5:
+                        # invalid
+                        continue
+                    if item[:5] == "uuid=":
+                        new_uuid = item[5:]
+                    elif item[:5] == "host=":
+                        new_host = item[5:]
+                    elif item[:5] == "backe" and item[:13] == "backend_port=":
+                        new_backend_port = item[13:]
+                    elif item[:5] == "metri" and item[:7] == "metric=":
+                        new_metric = item[7:]
+                    else:  # invalid
+                        continue
+                # check arguments
+                if new_uuid:
+                    # check UUID
+                    try:
+                        temp = UUID(new_uuid)
+                        if not str(temp) == new_uuid: raise Exception()
+                    except:
+                        # not a UUID, invalid
+                        continue
+                else:
+                    # if there's no UUID, create one randomly
+                    new_uuid = str(uuid4())
+                
+                # check port and metric
+                if not new_backend_port.isdecimal() or not new_metric.isdecimal():
+                    continue
+                new_backend_port = int(new_backend_port)
+                new_metric = int(new_metric)
+
+                self.addneighbor(uuid=new_uuid,
+                                 host=new_host,
+                                 backend_port=new_backend_port,
+                                 metric=new_metric)
             elif command == "map":
                 # Print Map
                 pass
@@ -229,3 +276,8 @@ class Content_server():
 
 if __name__ == "__main__":
     content_sever = Content_server(sys.argv[2])
+
+"""
+addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=25
+addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=25
+"""

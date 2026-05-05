@@ -10,6 +10,7 @@ docker compose up -d
 S=sim_session
 tmux kill-session -t $S 2>/dev/null
 tmux new -d -s $S \; \
+  set-option -g mouse on \; \
   split-window -h \; \
   split-window -h \; \
   split-window -h \; \
