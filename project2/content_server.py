@@ -21,6 +21,7 @@ class Content_server():
         self.backend_port = None
         self.peer_count = None
         self.tables = {}  # stores the peers of all other devices on the network
+        self.sequence_num = 0
 
         # load and read configuration file
         with open(conf_file_addr, "r") as f:
@@ -78,6 +79,7 @@ class Content_server():
                 "metric": metric,
                 "last_alive": time.time()
             }
+        self.sequence_num += 1
         self.link_state_flood()
     
     def link_state_adv(self):
@@ -90,7 +92,7 @@ class Content_server():
     def link_state_flood(self):
         # send state to all neighbors
         print("Link state flood!")
-        self.flood(f"L{json.dumps({"peers": self.get_alive_peers(), "time": time.time()})}")
+        self.flood(f"L{json.dumps({"name": self.name, "uuid": self.uuid, "port": self.backend_port, "peers": self.get_alive_peers(), "sequence": self.sequence_num})}")
 
     def flood(self, msg):
         # send a message to all peers
@@ -124,9 +126,9 @@ class Content_server():
             # send to all peers possible, not just alive ones
             with self.peers_lock:
                 for peer in self.peers.values():
-                    print(f"Sending keep alive to {peer["host"]}")
+                    # print(f"Sending keep alive to {peer["host"]}")
                     self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
-                    print(f"Done sending keep alive to {peer["host"]}")
+                    # print(f"Done sending keep alive to {peer["host"]}")
             time.sleep(ALIVE_SGN_INTERVAL)
     
     ## THIS IS THE RECEIVE FUNCTION THAT IS RECEIVING THE PACKETS
@@ -146,7 +148,7 @@ class Content_server():
             data = json.loads(msg_string[1:])
             if opcode == "A": # Update the timeout time if known node, otherwise add new neighbor
                 # receive keepAlive as JSON
-                print(f"Got a keep alive from {client_address[0]}")
+                # print(f"Got a keep alive from {client_address[0]}")
                 with self.peers_lock:
                     if data["uuid"] in self.peers:
                         self.peers[data["uuid"]]["name"] = data["name"]
@@ -163,12 +165,40 @@ class Content_server():
                         # }
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
-                pass
+                print(f"!! Got link state message from {client_address[0]} !!")
+                if data["name"] not in self.tables or data["sequence"] > self.tables[data["name"]]["sequence"]:
+                    # forward
+                    self.flood(msg_string)
+                    self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                    if self.uuid in data["peers"] and data["uuid"] not in self.peers:
+                        # we're in and we need to add the new peer
+                        new_metric = data["peers"][self.uuid]["metric"]
+                        self.addneighbor(uuid=data["uuid"],
+                                         host=client_address[0],
+                                         backend_port=data["port"],
+                                         metric=new_metric)
+                        self.peers[data["uuid"]]["name"] = data["name"]
+                        # with self.peers_lock:
+                            # add to peers
+                            # self.peers[data["uuid"]] = {
+                            #     "name": data["name"],
+                            #     "host": client_address[0],
+                            #     "port": data["port"],
+                            #     "metric": new_metric,
+                            #     "last_alive": time.time()
+                            # }
+                            # "name": None,  # will be filled in from the keepAlive messages
+                            # "host": host,
+                            # "port": backend_port,
+                            # "metric": metric,
+                            # "last_alive": time.time()
+                
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
+                print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
                 alive_peers = self.get_alive_peers()
                 if data["uuid"] not in alive_peers:
-                    self.flood(msg_string[1:])
+                    self.flood(msg_string)
 
                 # kill it
                 with self.peers_lock:
