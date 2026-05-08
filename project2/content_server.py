@@ -168,6 +168,8 @@ class Content_server():
                     # forward
                     self.flood(msg_string)
                     self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                    # TODO: should be this, but causes issues
+                    # self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
                     if self.uuid in data["peers"] and data["uuid"] not in self.peers:
                         # we're in and we need to add the new peer
                         new_metric = data["peers"][self.uuid]["metric"]
