@@ -91,7 +91,7 @@ class Content_server():
     
     def link_state_flood(self):
         # send state to all neighbors
-        print("Link state flood!")
+        # print("Link state flood!")
         self.flood(f"L{json.dumps({"name": self.name, "uuid": self.uuid, "port": self.backend_port, "peers": self.get_alive_peers(), "sequence": self.sequence_num})}")
 
     def flood(self, msg):
@@ -156,16 +156,9 @@ class Content_server():
                     else:
                         # NOTE: no need to consider this
                         continue
-                        # self.peers[data["uuid"]] = {
-                        #     "name": data["name"],
-                        #     "host": client_address[0],
-                        #     "port": data["port"],
-                        #     # "metric": data["metric"],
-                        #     "last_alive": time.time()
-                        # }
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
-                print(f"!! Got link state message from {client_address[0]} !!")
+                # print(f"!! Got link state message from {client_address[0]} !!")
                 if data["name"] not in self.tables or data["sequence"] > self.tables[data["name"]]["sequence"]:
                     # forward
                     self.flood(msg_string)
@@ -178,21 +171,6 @@ class Content_server():
                                          backend_port=data["port"],
                                          metric=new_metric)
                         self.peers[data["uuid"]]["name"] = data["name"]
-                        # with self.peers_lock:
-                            # add to peers
-                            # self.peers[data["uuid"]] = {
-                            #     "name": data["name"],
-                            #     "host": client_address[0],
-                            #     "port": data["port"],
-                            #     "metric": new_metric,
-                            #     "last_alive": time.time()
-                            # }
-                            # "name": None,  # will be filled in from the keepAlive messages
-                            # "host": host,
-                            # "port": backend_port,
-                            # "metric": metric,
-                            # "last_alive": time.time()
-                
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
                 print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
@@ -201,10 +179,15 @@ class Content_server():
                     self.flood(msg_string)
 
                 # kill it
+                changed = False
                 with self.peers_lock:
                     # check if it exists
-                    if data["uuid"] in self.peers:
+                    changed = data["uuid"] in self.peers
+                    if changed:
                         self.peers[data["uuid"]]["last_alive"] = 0
+                        self.sequence_num += 1
+                if changed:  # needed to prevent a deadlock
+                    self.link_state_flood()
             # otherwise the msg is dropped
 
     def shortest_path(self):
@@ -219,14 +202,30 @@ class Content_server():
                 if self.peers[uuid]["last_alive"] > time.time() - TIMEOUT_INTERVAL:
                     out[uuid] = self.peers[uuid]
         return out
+
+    def timeout_check(self):
+        # checks if any peers have timed out, meaning our alive peers has changed
+        while self.remain_threads:
+            changed = False
+            with self.peers_lock:
+                for uuid in self.peers:
+                    if self.peers[uuid]["last_alive"] and (self.peers[uuid]["last_alive"] < time.time() - TIMEOUT_INTERVAL):
+                        changed = True
+                        self.peers[uuid]["last_alive"] = 0
+            if changed:
+                self.sequence_num += 1
+                self.link_state_flood()
+            time.sleep(ALIVE_SGN_INTERVAL)
         
     def alive(self):
         keep_alive = threading.Thread(target=self.keep_alive) # A thread that keeps sending keep_alive messages
         listen = threading.Thread(target=self.listen) # A thread that keeps listening to incoming packets
         link_state_adv = threading.Thread(target=self.link_state_adv) # A thread that keeps doing link_state_adv
+        timeout_check = threading.Thread(target=self.timeout_check)
         keep_alive.start()
         listen.start()
         link_state_adv.start()
+        timeout_check.start()
         while self.remain_threads:
             time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle
             command_line = input().split(" ")
@@ -299,7 +298,7 @@ class Content_server():
                                  metric=new_metric)
             elif command == "map":
                 # Print Map
-                pass
+                print(self.tables)
             elif command == "rank": 
                 # Compute and print the rank
                 pass
