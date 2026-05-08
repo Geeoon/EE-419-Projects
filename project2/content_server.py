@@ -114,6 +114,11 @@ class Content_server():
         except Exception as e:
             pass  # host unreachable
 
+    def update_tables(self):
+        # updates the self.tables entries to prune dead nodes
+        alive_peers = self.get_alive_peers()
+
+
     def keep_alive(self):
         # Tell that you are alive to all your neighbors, periodically.
         while self.remain_threads:
@@ -274,17 +279,13 @@ class Content_server():
                     else:  # invalid
                         continue
                 # check arguments
-                if new_uuid:
-                    # check UUID
-                    try:
-                        temp = UUID(new_uuid)
-                        if not str(temp) == new_uuid: raise Exception()
-                    except:
-                        # not a UUID, invalid
-                        continue
-                else:
-                    # if there's no UUID, create one randomly
-                    new_uuid = str(uuid4())
+                # check UUID
+                try:
+                    temp = UUID(new_uuid)
+                    if not str(temp) == new_uuid: raise Exception()
+                except:
+                    # not a UUID, invalid
+                    continue
                 
                 # check port and metric
                 if not new_backend_port.isdecimal() or not new_metric.isdecimal():
