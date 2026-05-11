@@ -125,7 +125,7 @@ class Content_server():
     def link_state_flood(self):
         # send state to all neighbors
         # print("Link state flood!")
-        self.flood(f"L{json.dumps({"name": self.name, "uuid": self.uuid, "port": self.backend_port, "peers": self.get_alive_peers(), "sequence": self.sequence_num})}")
+        self.flood("L" + json.dumps({"name": self.name, "uuid": self.uuid, "port": self.backend_port, "peers": self.get_alive_peers(), "sequence": self.sequence_num}))
 
     def flood(self, msg):
         # send a message to all peers
@@ -165,7 +165,7 @@ class Content_server():
             with self.peers_lock:
                 for peer in self.peers.values():
                     # print(f"Sending keep alive to {peer["host"]}")
-                    self._send_msg(peer["host"], peer["port"], f"A{json.dumps(data)}")
+                    self._send_msg(peer["host"], peer["port"], "A" + json.dumps(data))
                     # print(f"Done sending keep alive to {peer["host"]}")
             time.sleep(ALIVE_SGN_INTERVAL)
     
@@ -266,7 +266,7 @@ class Content_server():
             if changed:
                 self.send_updated_lsa()
             for uuid in removed:  # send death messages for those that timed out
-                self.flood(f"D{json.dumps({"uuid": uuid})}")
+                self.flood("D" + json.dumps({"uuid": uuid}))
             time.sleep(ALIVE_SGN_INTERVAL)
         
     def alive(self):
@@ -283,7 +283,7 @@ class Content_server():
             command = command_line[0]
             if command == "kill":
                 # Send death message
-                self.flood(f"D{json.dumps({"uuid": self.uuid})}")
+                self.flood("D" + json.dumps({"uuid": self.uuid}))
                 self.remain_threads = False
             elif command == "uuid":
                 print(json.dumps({"uuid":self.uuid}))
