@@ -70,7 +70,7 @@ class Content_server():
         # self.link_state_adv()  a seperate thread will do this
         self.alive()
     
-    def addneighbor(self, uuid, host, backend_port, metric):
+    def addneighbor(self, uuid, host, backend_port, metric, advertise=True):
         with self.peers_lock:
             self.peers[uuid] = {
                 "name": None,  # will be filled in from the keepAlive messages
@@ -79,12 +79,13 @@ class Content_server():
                 "metric": metric,
                 "last_alive": time.time()
             }
-        self.send_updated_lsa()
+        if advertise:
+            self.send_updated_lsa()
     
     def link_state_adv(self):
         # Perform Link State Advertisement to all your neighbors periodically 
         while self.remain_threads:
-            self.link_state_flood()
+            self.send_updated_lsa()
             time.sleep(TIMEOUT_INTERVAL)  # wait
 
     
@@ -175,17 +176,22 @@ class Content_server():
                     # forward
                     self.flood(msg_string)
                     # print(data)
-                    # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                    self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
                     # TODO: should be this, but causes issues
                     self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
-                    if self.uuid in data["peers"] and data["uuid"] not in self.peers:
+                    with self.peers_lock:
+                        is_neighbor = self.uuid in data["peers"] and data["uuid"] not in self.peers
+                    if is_neighbor:
                         # we're in and we need to add the new peer
                         new_metric = data["peers"][self.uuid]["metric"]
                         self.addneighbor(uuid=data["uuid"],
                                          host=client_address[0],
                                          backend_port=data["port"],
-                                         metric=new_metric)
-                        self.peers[data["uuid"]]["name"] = data["name"]
+                                         metric=new_metric,
+                                         advertise=False)
+                        with self.peers_lock:
+                            self.peers[data["uuid"]]["name"] = data["name"]
+                        self.send_updated_lsa()
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
                 # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
@@ -309,11 +315,11 @@ class Content_server():
                 # Print Map
                 out = {"map": {}}
                 for uuid in self.tables:
-                    if self.tables[uuid]["name"] is None:
+                    if self.tables[uuid].get("name", None) is None:
                         continue
                     out["map"][self.tables[uuid]["name"]] = {}
                     for peer_uuid in self.tables[uuid]["peers"]:
-                        if self.tables[uuid]["peers"][peer_uuid]["name"] is None:
+                        if self.tables[uuid]["peers"][peer_uuid].get("name", None) is None:
                             continue
                         out["map"][self.tables[uuid]["name"]][self.tables[uuid]["peers"][peer_uuid]["name"]] = self.tables[uuid]["peers"][peer_uuid]["metric"]
                 print(json.dumps(out))
@@ -325,6 +331,10 @@ if __name__ == "__main__":
     content_sever = Content_server(sys.argv[2])
 
 """
-addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=25
+Add node1 as neighbor
+addneighbor uuid=f94fc272-5611-4a61-8b27-de7fe233797f host=10.1.0.1 backend_port=18346 metric=25
+Add node2 as neighbor
+addneighbor uuid=24f22a83-16f4-4bd5-af63-9b5c6e979dbb host=10.1.0.2 backend_port=18346 metric=25
+Add node3 as neighbor
 addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=25
 """
