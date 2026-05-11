@@ -79,8 +79,7 @@ class Content_server():
                 "metric": metric,
                 "last_alive": time.time()
             }
-        self.sequence_num += 1
-        self.link_state_flood()
+        self.send_updated_lsa()
     
     def link_state_adv(self):
         # Perform Link State Advertisement to all your neighbors periodically 
@@ -118,6 +117,10 @@ class Content_server():
         # updates the self.tables entries to prune dead nodes
         alive_peers = self.get_alive_peers()
 
+    def send_updated_lsa(self):
+        self.sequence_num += 1
+        print(f"Sending updated LSA with seq num: {self.sequence_num}")
+        self.link_state_flood()
 
     def keep_alive(self):
         # Tell that you are alive to all your neighbors, periodically.
@@ -154,22 +157,27 @@ class Content_server():
             if opcode == "A": # Update the timeout time if known node, otherwise add new neighbor
                 # receive keepAlive as JSON
                 # print(f"Got a keep alive from {client_address[0]}")
+                changed = False
                 with self.peers_lock:
                     if data["uuid"] in self.peers:
+                        changed = self.peers[data["uuid"]]["name"] != data["name"]
                         self.peers[data["uuid"]]["name"] = data["name"]
                         self.peers[data["uuid"]]["last_alive"] = time.time()
                     else:
                         # NOTE: no need to consider this
                         continue
+                if changed:
+                    self.send_updated_lsa()
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 # print(f"!! Got link state message from {client_address[0]} !!")
-                if data["name"] not in self.tables or data["sequence"] > self.tables[data["name"]]["sequence"]:
+                if data["uuid"] != self.uuid and (data["uuid"] not in self.tables or data["sequence"] > self.tables[data["uuid"]]["sequence"]):
                     # forward
                     self.flood(msg_string)
-                    self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                    print(data)
+                    # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
                     # TODO: should be this, but causes issues
-                    # self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
+                    self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
                     if self.uuid in data["peers"] and data["uuid"] not in self.peers:
                         # we're in and we need to add the new peer
                         new_metric = data["peers"][self.uuid]["metric"]
@@ -192,9 +200,8 @@ class Content_server():
                     changed = data["uuid"] in self.peers
                     if changed:
                         self.peers[data["uuid"]]["last_alive"] = 0
-                        self.sequence_num += 1
                 if changed:  # needed to prevent a deadlock
-                    self.link_state_flood()
+                    self.send_updated_lsa()
             # otherwise the msg is dropped
 
     def shortest_path(self):
@@ -220,8 +227,7 @@ class Content_server():
                         changed = True
                         self.peers[uuid]["last_alive"] = 0
             if changed:
-                self.sequence_num += 1
-                self.link_state_flood()
+                self.send_updated_lsa()
             time.sleep(ALIVE_SGN_INTERVAL)
         
     def alive(self):
