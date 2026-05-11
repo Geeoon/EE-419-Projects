@@ -119,7 +119,7 @@ class Content_server():
 
     def send_updated_lsa(self):
         self.sequence_num += 1
-        print(f"Sending updated LSA with seq num: {self.sequence_num}")
+        # print(f"Sending updated LSA with seq num: {self.sequence_num}")
         self.link_state_flood()
 
     def keep_alive(self):
@@ -174,7 +174,7 @@ class Content_server():
                 if data["uuid"] != self.uuid and (data["uuid"] not in self.tables or data["sequence"] > self.tables[data["uuid"]]["sequence"]):
                     # forward
                     self.flood(msg_string)
-                    print(data)
+                    # print(data)
                     # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
                     # TODO: should be this, but causes issues
                     self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
@@ -187,7 +187,7 @@ class Content_server():
                                          metric=new_metric)
                         self.peers[data["uuid"]]["name"] = data["name"]
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
-                print(f"Got death message from {client_address[0]}")
+                # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
                 alive_peers = self.get_alive_peers()
                 if data["uuid"] not in alive_peers:
@@ -307,7 +307,16 @@ class Content_server():
                                  metric=new_metric)
             elif command == "map":
                 # Print Map
-                print(self.tables)
+                out = {"map": {}}
+                for uuid in self.tables:
+                    if self.tables[uuid]["name"] is None:
+                        continue
+                    out["map"][self.tables[uuid]["name"]] = {}
+                    for peer_uuid in self.tables[uuid]["peers"]:
+                        if self.tables[uuid]["peers"][peer_uuid]["name"] is None:
+                            continue
+                        out["map"][self.tables[uuid]["name"]][self.tables[uuid]["peers"][peer_uuid]["name"]] = self.tables[uuid]["peers"][peer_uuid]["metric"]
+                print(json.dumps(out))
             elif command == "rank": 
                 # Compute and print the rank
                 pass
