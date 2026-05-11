@@ -196,7 +196,7 @@ class Content_server():
                 # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
                 alive_peers = self.get_alive_peers()
-                if data["uuid"] not in alive_peers:
+                if data["uuid"] in alive_peers:
                     self.flood(msg_string)
 
                 # kill it
@@ -206,6 +206,8 @@ class Content_server():
                     changed = data["uuid"] in self.peers
                     if changed:
                         self.peers[data["uuid"]]["last_alive"] = 0
+                # remove from the network map
+                self.tables.pop(data["uuid"], None)
                 if changed:  # needed to prevent a deadlock
                     self.send_updated_lsa()
             # otherwise the msg is dropped
