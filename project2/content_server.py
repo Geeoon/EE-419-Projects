@@ -4,12 +4,13 @@ import threading, time
 import random
 from uuid import UUID, uuid4
 import json
+import heapq
+import math
 
 BUFSIZE = 1024  # size of receiving buffer
 ALIVE_SGN_INTERVAL = 0.5  # interval to send alive signal
 TIMEOUT_INTERVAL = 10*ALIVE_SGN_INTERVAL
 UPSTREAM_PORT_NUMBER = 1111 # socket number for UL transmission
-
 
 class Content_server():
     def __init__(self, conf_file_addr):
@@ -69,6 +70,33 @@ class Content_server():
         # Initialize link state advertisement that repeats using a neighbor variable
         # self.link_state_adv()  a seperate thread will do this
         self.alive()
+
+    def compute_rank(self):
+        metrics = {node_uuid: math.inf for node_uuid in self.tables}
+        metrics[self.uuid] = 0
+
+        priority = [(0, self.uuid)]
+
+        while priority:
+            dist, node_uuid = heapq.heappop(priority)
+
+            if dist > metrics[node_uuid]:
+                continue
+
+            for peer_uuid, metric in (self.peers if node_uuid == self.uuid else self.tables[node_uuid]["peers"]).items():
+                metric = metric["metric"]
+                new_dist = dist + metric
+                if new_dist < metrics[peer_uuid]:
+                    metrics[peer_uuid] = new_dist
+                    heapq.heappush(priority, (new_dist, peer_uuid))
+        
+        # remove ourselves
+        metrics.pop(self.uuid, None)
+        out = {}
+        # convert from uuid to colloquial name
+        for uuid, metric in metrics.items():
+            out[self.tables[uuid]["name"]] = metric
+        return out
     
     def addneighbor(self, uuid, host, backend_port, metric, advertise=True):
         with self.peers_lock:
@@ -176,7 +204,7 @@ class Content_server():
                     # forward
                     self.flood(msg_string)
                     # print(data)
-                    self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                    # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
                     # TODO: should be this, but causes issues
                     self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
                     with self.peers_lock:
@@ -248,7 +276,7 @@ class Content_server():
         link_state_adv.start()
         timeout_check.start()
         while self.remain_threads:
-            time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle
+            # time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle, useless, input is blocking
             command_line = input().split(" ")
             command = command_line[0]
             if command == "kill":
@@ -327,16 +355,16 @@ class Content_server():
                 print(json.dumps(out))
             elif command == "rank": 
                 # Compute and print the rank
-                pass
+                print(json.dumps(self.compute_rank()))
 
 if __name__ == "__main__":
     content_sever = Content_server(sys.argv[2])
 
 """
 Add node1 as neighbor
-addneighbor uuid=f94fc272-5611-4a61-8b27-de7fe233797f host=10.1.0.1 backend_port=18346 metric=25
+addneighbor uuid=f94fc272-5611-4a61-8b27-de7fe233797f host=10.1.0.1 backend_port=18346 metric=10
 Add node2 as neighbor
-addneighbor uuid=24f22a83-16f4-4bd5-af63-9b5c6e979dbb host=10.1.0.2 backend_port=18346 metric=25
+addneighbor uuid=24f22a83-16f4-4bd5-af63-9b5c6e979dbb host=10.1.0.2 backend_port=18346 metric=30
 Add node3 as neighbor
-addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=25
+addneighbor uuid=3d2f4e34-6d21-4dda-aa78-796e3507903c host=10.1.0.3 backend_port=18346 metric=60
 """
