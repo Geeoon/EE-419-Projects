@@ -21,6 +21,7 @@ class Content_server():
         self.name = None
         self.backend_port = None
         self.peer_count = None
+        self.tables_lock = threading.Lock()
         self.tables = {}  # stores the peers of all other devices on the network
         self.sequence_num = 0
 
@@ -72,31 +73,32 @@ class Content_server():
         self.alive()
 
     def compute_rank(self):
-        metrics = {node_uuid: math.inf for node_uuid in self.tables}
-        metrics[self.uuid] = 0
+        with self.tables_lock:
+            metrics = {node_uuid: math.inf for node_uuid in self.tables}
+            metrics[self.uuid] = 0
 
-        priority = [(0, self.uuid)]
+            priority = [(0, self.uuid)]
 
-        while priority:
-            dist, node_uuid = heapq.heappop(priority)
+            while priority:
+                dist, node_uuid = heapq.heappop(priority)
 
-            if dist > metrics[node_uuid]:
-                continue
+                if dist > metrics[node_uuid]:
+                    continue
 
-            for peer_uuid, metric in (self.peers if node_uuid == self.uuid else self.tables[node_uuid]["peers"]).items():
-                metric = metric["metric"]
-                new_dist = dist + metric
-                if new_dist < metrics[peer_uuid]:
-                    metrics[peer_uuid] = new_dist
-                    heapq.heappush(priority, (new_dist, peer_uuid))
+                for peer_uuid, metric in (self.peers if node_uuid == self.uuid else self.tables[node_uuid]["peers"]).items():
+                    metric = metric["metric"]
+                    new_dist = dist + metric
+                    if new_dist < metrics[peer_uuid]:
+                        metrics[peer_uuid] = new_dist
+                        heapq.heappush(priority, (new_dist, peer_uuid))
         
-        # remove ourselves
-        metrics.pop(self.uuid, None)
-        out = {}
-        # convert from uuid to colloquial name
-        for uuid, metric in metrics.items():
-            out[self.tables[uuid]["name"]] = metric
-        return out
+            # remove ourselves
+            metrics.pop(self.uuid, None)
+            out = {}
+            # convert from uuid to colloquial name
+            for uuid, metric in metrics.items():
+                out[self.tables[uuid]["name"]] = metric
+            return out
     
     def addneighbor(self, uuid, host, backend_port, metric, advertise=True):
         with self.peers_lock:
@@ -141,10 +143,6 @@ class Content_server():
             sock.close()
         except Exception as e:
             pass  # host unreachable
-
-    def update_tables(self):
-        # updates the self.tables entries to prune dead nodes
-        alive_peers = self.get_alive_peers()
 
     def send_updated_lsa(self):
         self.sequence_num += 1
@@ -200,26 +198,27 @@ class Content_server():
             elif opcode == "L":     # Update the map based on new information, drop if old information
                 #If new information, also flood to other neighbors
                 # print(f"!! Got link state message from {client_address[0]} !!")
-                if data["uuid"] != self.uuid and (data["uuid"] not in self.tables or data["sequence"] > self.tables[data["uuid"]]["sequence"]):
-                    # forward
-                    self.flood(msg_string)
-                    # print(data)
-                    # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
-                    # TODO: should be this, but causes issues
-                    self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
-                    with self.peers_lock:
-                        is_neighbor = self.uuid in data["peers"] and data["uuid"] not in self.peers
-                    if is_neighbor:
-                        # we're in and we need to add the new peer
-                        new_metric = data["peers"][self.uuid]["metric"]
-                        self.addneighbor(uuid=data["uuid"],
-                                         host=client_address[0],
-                                         backend_port=data["port"],
-                                         metric=new_metric,
-                                         advertise=False)
+                with self.tables_lock:
+                    if data["uuid"] != self.uuid and (data["uuid"] not in self.tables or data["sequence"] > self.tables[data["uuid"]]["sequence"]):
+                        # forward
+                        self.flood(msg_string)
+                        # print(data)
+                        # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
+                        # TODO: should be this, but causes issues
+                        self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
                         with self.peers_lock:
-                            self.peers[data["uuid"]]["name"] = data["name"]
-                        self.send_updated_lsa()
+                            is_neighbor = self.uuid in data["peers"] and data["uuid"] not in self.peers
+                        if is_neighbor:
+                            # we're in and we need to add the new peer
+                            new_metric = data["peers"][self.uuid]["metric"]
+                            self.addneighbor(uuid=data["uuid"],
+                                            host=client_address[0],
+                                            backend_port=data["port"],
+                                            metric=new_metric,
+                                            advertise=False)
+                            with self.peers_lock:
+                                self.peers[data["uuid"]]["name"] = data["name"]
+                            self.send_updated_lsa()
             elif opcode == "D": # Delete the node if it sends the message before executing kill.
                 # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
@@ -235,7 +234,8 @@ class Content_server():
                     if changed:
                         self.peers[data["uuid"]]["last_alive"] = 0
                 # remove from the network map
-                self.tables.pop(data["uuid"], None)
+                with self.tables_lock:
+                    self.tables.pop(data["uuid"], None)
                 if changed:  # needed to prevent a deadlock
                     self.send_updated_lsa()
             # otherwise the msg is dropped
@@ -344,14 +344,15 @@ class Content_server():
             elif command == "map":
                 # Print Map
                 out = {"map": {}}
-                for uuid in self.tables:
-                    if self.tables[uuid].get("name", None) is None:
-                        continue
-                    out["map"][self.tables[uuid]["name"]] = {}
-                    for peer_uuid in self.tables[uuid]["peers"]:
-                        if self.tables[uuid]["peers"][peer_uuid].get("name", None) is None:
+                with self.tables_lock:
+                    for uuid in self.tables:
+                        if self.tables[uuid].get("name", None) is None:
                             continue
-                        out["map"][self.tables[uuid]["name"]][self.tables[uuid]["peers"][peer_uuid]["name"]] = self.tables[uuid]["peers"][peer_uuid]["metric"]
+                        out["map"][self.tables[uuid]["name"]] = {}
+                        for peer_uuid in self.tables[uuid]["peers"]:
+                            if self.tables[uuid]["peers"][peer_uuid].get("name", None) is None:
+                                continue
+                            out["map"][self.tables[uuid]["name"]][self.tables[uuid]["peers"][peer_uuid]["name"]] = self.tables[uuid]["peers"][peer_uuid]["metric"]
                 print(json.dumps(out))
             elif command == "rank": 
                 # Compute and print the rank
