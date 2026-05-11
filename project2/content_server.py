@@ -228,17 +228,13 @@ class Content_server():
                     self.flood(msg_string)
 
                 # kill it
-                changed = False
-                with self.peers_lock:
-                    # check if it exists
-                    changed = data["uuid"] in self.peers
-                    if changed:
-                        self.peers[data["uuid"]]["last_alive"] = 0
+                # check if it exists
+                if data["uuid"] in alive_peers:
+                    self.peers[data["uuid"]]["last_alive"] = 0
+                    self.send_updated_lsa()
                 # remove from the network map
                 with self.tables_lock:
                     self.tables.pop(data["uuid"], None)
-                if changed:  # needed to prevent a deadlock
-                    self.send_updated_lsa()
             # otherwise the msg is dropped
 
     def shortest_path(self):
