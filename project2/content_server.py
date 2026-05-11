@@ -85,7 +85,10 @@ class Content_server():
                 if dist > metrics[node_uuid]:
                     continue
 
-                for peer_uuid, metric in (self.peers if node_uuid == self.uuid else self.tables[node_uuid]["peers"]).items():
+                alive_peers = self.get_alive_peers()
+                for peer_uuid, metric in (alive_peers if node_uuid == self.uuid else self.tables[node_uuid]["peers"]).items():
+                    if peer_uuid not in metrics:
+                        continue  # prevent stupid race condition
                     metric = metric["metric"]
                     new_dist = dist + metric
                     if new_dist < metrics[peer_uuid]:
@@ -203,8 +206,6 @@ class Content_server():
                         # forward
                         self.flood(msg_string)
                         # print(data)
-                        # self.tables[data["name"]] = {"peers": data["peers"], "sequence": data["sequence"]}
-                        # TODO: should be this, but causes issues
                         self.tables[data["uuid"]] = {"name": data["name"], "peers": data["peers"], "sequence": data["sequence"]}
                         with self.peers_lock:
                             is_neighbor = self.uuid in data["peers"] and data["uuid"] not in self.peers
@@ -223,7 +224,7 @@ class Content_server():
                 # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
                 alive_peers = self.get_alive_peers()
-                if data["uuid"] in alive_peers:
+                if data["uuid"] in alive_peers or data["uuid"] in self.tables:
                     self.flood(msg_string)
 
                 # kill it
@@ -257,13 +258,19 @@ class Content_server():
         # checks if any peers have timed out, meaning our alive peers has changed
         while self.remain_threads:
             changed = False
+            removed = set()
             with self.peers_lock:
                 for uuid in self.peers:
                     if self.peers[uuid]["last_alive"] and (self.peers[uuid]["last_alive"] < time.time() - TIMEOUT_INTERVAL):
                         changed = True
                         self.peers[uuid]["last_alive"] = 0
+                        with self.tables_lock:
+                            if self.tables.pop(uuid, None) is not None:
+                                removed.add(uuid)
             if changed:
                 self.send_updated_lsa()
+            for uuid in removed:  # send death messages for those that timed out
+                self.flood(f"D{json.dumps({"uuid": uuid})}")
             time.sleep(ALIVE_SGN_INTERVAL)
         
     def alive(self):
@@ -276,7 +283,6 @@ class Content_server():
         link_state_adv.start()
         timeout_check.start()
         while self.remain_threads:
-            # time.sleep(ALIVE_SGN_INTERVAL)  # wait for the network to settle, useless, input is blocking
             command_line = input().split(" ")
             command = command_line[0]
             if command == "kill":
