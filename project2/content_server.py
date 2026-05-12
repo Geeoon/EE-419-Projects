@@ -220,7 +220,7 @@ class Content_server():
                             with self.peers_lock:
                                 self.peers[data["uuid"]]["name"] = data["name"]
                             self.send_updated_lsa()
-            elif opcode == "D": # Delete the node if it sends the message before executing kill.
+            elif opcode == "D": # Delete the node
                 # print(f"Got death message from {client_address[0]}")
                 # forward to all our peers, unless we have already marked the node for death
                 alive_peers = self.get_alive_peers()
@@ -283,7 +283,6 @@ class Content_server():
             command = command_line[0]
             if command == "kill":
                 # Send death message
-                self.flood("D" + json.dumps({"uuid": self.uuid}))
                 self.remain_threads = False
             elif command == "uuid":
                 print(json.dumps({"uuid":self.uuid}))
@@ -355,10 +354,16 @@ class Content_server():
                             if self.tables[uuid]["peers"][peer_uuid].get("name", None) is None:
                                 continue
                             out["map"][self.tables[uuid]["name"]][self.tables[uuid]["peers"][peer_uuid]["name"]] = self.tables[uuid]["peers"][peer_uuid]["metric"]
+                # add ourselves
+                out["map"][self.name] = {}
+                for peer_uuid, val in self.peers.items():
+                    if val["name"] is None:
+                        continue  # skip ones without names
+                    out["map"][self.name][val["name"]] = val["metric"]
                 print(json.dumps(out))
             elif command == "rank": 
                 # Compute and print the rank
-                print(json.dumps(self.compute_rank()))
+                print(json.dumps({"rank": self.compute_rank()}))
 
 if __name__ == "__main__":
     content_sever = Content_server(sys.argv[2])
