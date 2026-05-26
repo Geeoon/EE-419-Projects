@@ -83,7 +83,7 @@ class Server():
                     our_sequence_number += 1
                     connect_flag = False
                     continue
-                else chunk[0] != ord('D'):
+                elif chunk[0] != ord('D'):
                     continue  # we got junk, toss it
                 chunk = chunk[1:]  # strip the header
 
