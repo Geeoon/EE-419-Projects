@@ -34,8 +34,8 @@ class Server():
     
     def find_file(self, file_name):
         #A function to find the peer with the file you want!
-        for peer in self.peer_info:
-            if file_name in peer['content_info']
+        for peer in self.peers:
+            if file_name in peer['content_info']:
                 return (peer['hostname'], peer['port'])
     
     def load_file(self, file_name):
@@ -156,56 +156,53 @@ class Server():
                 tx_socket.send(b'B' + struct.pack(">I", final_sequence_number))
         # handshake done, start sending DATA packets
         last_sent_seq = 0
-        while last_recv_ack != final_sequence_number + 1:
+        tries = 0
+        while last_recv_ack != final_sequence_number + 1 and tries < 3:
             try:
                 # send DATA packets in window
-                while (last_sent_seq < last_recv_ack + WINDOW_SIZE) and (last_sent_seq < final_sequence_number):
+                while last_sent_seq < min(last_recv_ack + WINDOW_SIZE, final_sequence_number + 1):
                     # send DATA packet
                     tx_socket.send(b'D' + struct.pack(">I", last_sent_seq + 1) + transmit_file[last_sent_seq])
                     last_sent_seq += 1
                 data = tx_socket.recv(BUFSIZE)
+                tries = 0
                 if data[0] != ord('A'):
                     raise Exception(f"Malformed ACK packet in DATA portion: {data}")
                 # strip header
                 data = data[1:]
                 seq_num = struct.unpack(">I", data)[0]
-                if seq_num <= last_recv_ack:
-                    
+
+                if seq_num > last_recv_ack:
+                    # normal behavior
+                    # advance received sequence number
+                    last_recv_ack = seq_num
+                elif seq_num == last_recv_ack:
+                    # ACK sequence number indicates issue
+                    # reset window
+                    last_recv_ack = seq_num
+                    last_sent_seq = last_recv_ack
+                # in the case where we get an old ACK (i.e., out of order ACKs) we can just ignore it
             except socket.timeout:
-                pass
-
-        # print("sending packet num", packet_num, "to", addr)
-        # tx_socket.sendto(str(packet_num).encode(), addr)
-        # use a transmit window to determine which file should be transmitted
-
-        # use a time-out array to record which file is time-out and need to be transmitted again
-        # -1 indicates received, 0 indicates not transmitted, positive numbers means the time of transmission
+                # reset window
+                last_sent_seq = last_recv_ack
+                tries += 1
         
-        def transmit_thread():
-            #Takes the transmit window and transmits every packet that is allowed to be transmitted
-            return
-        
-        def ack_thread():
-            #Receives acknowledgement and updates the transmit window with sendable packets
-            pass
-        
-        #Create TX and RX threads and start doing it
-
-        #When done transmitting, close the threads.
-
     def listener(self): # listen to the socket to see if there's any transmission request
         #Do any initializations that you want
         while self.remain_threads:
             try:
                 data, addr = self.server_socket.recvfrom(BUFSIZE)
-                tx_socket = self.server_socket.connect(addr)
+                tx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                tx_socket.connect(addr)
                 tx_socket.settimeout(TIMEOUT)
                 # verify SYN packet
                 if data[0] != ord('S'):
                     raise Exception(f"Malformed SYN packet: {data}")
                 # strip header
                 file_name = data[1:].decode('ascii')
-                self.transmit(file_name, tx_socket)  # TODO: run in async thread
+                # self.transmit(file_name, tx_socket)  # TODO: run in async thread
+                tx_thread = threading.Thread(target=lambda: self.transmit(file_name, tx_socket))
+                tx_thread.start()
             except socket.timeout:
                 pass
     
@@ -216,12 +213,10 @@ class Server():
         while self.remain_threads:
             command_line = input()
             if command_line == "kill":  # for debugging purpose
-                #Do the kill stuff
-                return
-            #Otherwise it is a file name!
-        #Exit stuff if you have some?
-        return
-
+                # kill
+                self.remain_threads = False
+            else:
+                self.load_file(command_line)
 
 if __name__ == "__main__":
     server = Server(sys.argv[1])
