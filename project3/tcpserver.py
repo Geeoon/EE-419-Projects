@@ -40,7 +40,7 @@ class Server():
     
     def load_file(self, file_name):
         # find which server has the file
-        server = find_file(file_name)
+        server = self.find_file(file_name)
         if not server:
             raise Exception("Could not find the server which has the requested file.")
         # establish a client socket for downloading file
@@ -53,6 +53,7 @@ class Server():
 
         #Initiate three-way handshake and use a connect flag
         our_sequence_number = 0
+        final_sequence_number = -1
 
         while not connect_flag:
             try:
@@ -61,10 +62,15 @@ class Server():
                 self.cl_socket.send(b'S' + file_name.encode('ascii'))
                 # receive SYNACK
                 received = self.cl_socket.recv(BUFSIZE)
-                if received != b'B':
-                    # we should receive a '2' in response
+                if received[0] != ord('B'):
+                    # we should receive a 'B' (SYNACK) in response
                     raise Exception(f"Did not receive proper SYNACK: {received}")
+                # strip the header
+                received = received[1:]
+                # serialize the final sequence number
+                final_sequence_number = struct.unpack(">I", received)[0]
                 # send ACK
+                our_sequence_number += 1
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
                 connect_flag = True
             except socket.timeout:
@@ -78,21 +84,17 @@ class Server():
         while connect_flag:
             try:
                 chunk = self.cl_socket.recv(BUFSIZE)
-                # check the header
-                if chunk[0] == ord('F'):  # check if FIN packet
-                    our_sequence_number += 1
-                    connect_flag = False
+                if chunk[0] != ord('D'):
+                    print(f"Improper DATA packet: {chunk}")  # we got junk, toss it
                     continue
-                elif chunk[0] != ord('D'):
-                    continue  # we got junk, toss it
-                chunk = chunk[1:]  # strip the header
-
-                seq_num = struct.unpack(">I", chunk[:2])
+                seq_num = struct.unpack(">I", chunk[1:5])[0]
+                chunk = chunk[5:]  # strip the header
                 if seq_num == our_sequence_number:
                     # valid packet
                     # store and increment our sequence numbers
-                    data += chunk[2:]
+                    data += chunk
                     our_sequence_number += 1
+                    connect_flag = our_sequence_number == final_sequence_number
                 else:
                     # repeated or out of order packet
                     pass  # drop
@@ -103,7 +105,14 @@ class Server():
                 # send the ACK
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
                 
-        # transmission complete, close socket
+        # transmission complete, wait a little bit in-case our last ACK was dropped
+        for _ in range(3):
+            try:
+                chunk = self.cl_socket.recv(BUFSIZE)
+                self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
+            except socket.timeout:
+                pass
+                
         self.cl_socket.close()
 
         # write the file
@@ -121,21 +130,52 @@ class Server():
                 transmit_file.append(chunk)
         return transmit_file
 
-    def transmit(self, file_name, addr):
-        # create a udp socket for transmission
-        tx_socket = 
+    def transmit(self, file_name, tx_socket):
         # divide the file into several parts
-        #transmit_file = self.read_file(file_name)
-        #packet_num = len(transmit_file)
-        # use socket to send packet number to the receiver
-        #ack = 0
-        #print("sending packet num", packet_num, "to", addr)
-        tx_socket.sendto(str(packet_num).encode(), addr)
-        try:
-            #Receive ACK from the same tx_socket and increment window
-            pass
-        except socket.timeout:
-            pass
+        transmit_file = self.read_file(file_name)
+        final_sequence_number = len(transmit_file)
+        # finish handshake
+        # send SYNACK
+        tx_socket.send(b'B' + struct.pack(">I", final_sequence_number))
+        last_recv_ack = 0
+        # wait for first ACK
+        while last_recv_ack != 1:
+            try:
+                data = tx_socket.recv(BUFSIZE)
+                # check header
+                if data[0] != ord('A'):
+                    raise Exception(f"Malformed ACK packet in handshake: {data}")
+                # strip header
+                data = data[1:]
+                # get sequence number
+                last_recv_ack = struct.unpack(">I", data)[0]
+                if last_recv_ack != 1:
+                    raise Exception(f"Did not receive the expected first ACK sequence number: {last_recv_ack}")
+            except socket.timeout:
+                # did not receive ACK, try sending the SYNACK again
+                tx_socket.send(b'B' + struct.pack(">I", final_sequence_number))
+        # handshake done, start sending DATA packets
+        last_sent_seq = 0
+        while last_recv_ack != final_sequence_number + 1:
+            try:
+                # send DATA packets in window
+                while (last_sent_seq < last_recv_ack + WINDOW_SIZE) and (last_sent_seq < final_sequence_number):
+                    # send DATA packet
+                    tx_socket.send(b'D' + struct.pack(">I", last_sent_seq + 1) + transmit_file[last_sent_seq])
+                    last_sent_seq += 1
+                data = tx_socket.recv(BUFSIZE)
+                if data[0] != ord('A'):
+                    raise Exception(f"Malformed ACK packet in DATA portion: {data}")
+                # strip header
+                data = data[1:]
+                seq_num = struct.unpack(">I", data)[0]
+                if seq_num <= last_recv_ack:
+                    
+            except socket.timeout:
+                pass
+
+        # print("sending packet num", packet_num, "to", addr)
+        # tx_socket.sendto(str(packet_num).encode(), addr)
         # use a transmit window to determine which file should be transmitted
 
         # use a time-out array to record which file is time-out and need to be transmitted again
@@ -156,19 +196,18 @@ class Server():
     def listener(self): # listen to the socket to see if there's any transmission request
         #Do any initializations that you want
         while self.remain_threads:
-            file_name = ""
             try:
-                file_name, addr = self.server_socket.recvfrom(BUFSIZE)
-                #Receive the file name and requesting address from the UDP
+                data, addr = self.server_socket.recvfrom(BUFSIZE)
+                tx_socket = self.server_socket.connect(addr)
+                tx_socket.settimeout(TIMEOUT)
+                # verify SYN packet
+                if data[0] != ord('S'):
+                    raise Exception(f"Malformed SYN packet: {data}")
+                # strip header
+                file_name = data[1:].decode('ascii')
+                self.transmit(file_name, tx_socket)  # TODO: run in async thread
             except socket.timeout:
                 pass
-            
-            if file_name == "":
-                pass
-            else:   # start transmission
-                pass#Create a transmit thread (HINT : you can have a large array of transmit threads if you want) and start it
-                
-        return
     
     def cli(self):  # cli interface for input of the file name
         listen_thread = threading.Thread(target=self.listener)
