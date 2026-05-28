@@ -7,7 +7,7 @@ import struct
 BUFSIZE = 10202  # size of receiving buffer
 PKTSIZE = 10200  # number of bytes in a packet
 WINDOW_SIZE = 16
-IDX_LENGTH = 2 # 2 bytes of packet index
+IDX_LENGTH = 2 # 2 bytes of packet index.  Not used
 TIMEOUT = 0.5   # timeout time
 
 class Server():
@@ -29,8 +29,22 @@ class Server():
         self.server_socket.bind(("0.0.0.0", self.port)) # This is the only port you can use to receive
         self.server_socket.settimeout(TIMEOUT)   # timeout value
 
+        self._incoming_packets = {}
+        self._incoming_lock = threading.Lock()
+
         self.remain_threads = True
         self.cli()
+
+    def _recv_addr(self, addr):
+        start = time.time()
+        while self.remain_threads:
+            with self._incoming_lock:
+                if (addr in self._incoming_packets) and len(self._incoming_packets[addr]):
+                    return self._incoming_packets[addr].pop(0)
+            time.sleep(.01)  # to spamming
+            if (time.time() - start) > TIMEOUT:
+                raise socket.timeout
+
     
     def find_file(self, file_name):
         #A function to find the peer with the file you want!
@@ -130,18 +144,18 @@ class Server():
                 transmit_file.append(chunk)
         return transmit_file
 
-    def transmit(self, file_name, tx_socket):
+    def transmit(self, file_name, addr):
         # divide the file into several parts
         transmit_file = self.read_file(file_name)
         final_sequence_number = len(transmit_file)
         # finish handshake
         # send SYNACK
-        tx_socket.send(b'B' + struct.pack(">I", final_sequence_number))
+        self.server_socket.sendto(b'B' + struct.pack(">I", final_sequence_number), addr)
         last_recv_ack = 0
         # wait for first ACK
         while last_recv_ack != 1:
             try:
-                data = tx_socket.recv(BUFSIZE)
+                data = self._recv_addr(addr)
                 # check header
                 if data[0] != ord('A'):
                     raise Exception(f"Malformed ACK packet in handshake: {data}")
@@ -153,7 +167,7 @@ class Server():
                     raise Exception(f"Did not receive the expected first ACK sequence number: {last_recv_ack}")
             except socket.timeout:
                 # did not receive ACK, try sending the SYNACK again
-                tx_socket.send(b'B' + struct.pack(">I", final_sequence_number))
+                self.server_socket.sendto(b'B' + struct.pack(">I", final_sequence_number), addr)
         # handshake done, start sending DATA packets
         last_sent_seq = 0
         tries = 0
@@ -162,9 +176,9 @@ class Server():
                 # send DATA packets in window
                 while last_sent_seq < min(last_recv_ack + WINDOW_SIZE, final_sequence_number + 1):
                     # send DATA packet
-                    tx_socket.send(b'D' + struct.pack(">I", last_sent_seq + 1) + transmit_file[last_sent_seq])
+                    self.server_socket.sendto(b'D' + struct.pack(">I", last_sent_seq + 1) + transmit_file[last_sent_seq], addr)
                     last_sent_seq += 1
-                data = tx_socket.recv(BUFSIZE)
+                data = self._recv_addr(addr)
                 tries = 0
                 if data[0] != ord('A'):
                     raise Exception(f"Malformed ACK packet in DATA portion: {data}")
@@ -188,24 +202,28 @@ class Server():
                 tries += 1
         
     def listener(self): # listen to the socket to see if there's any transmission request
-        #Do any initializations that you want
         while self.remain_threads:
             try:
-                data, addr = self.server_socket.recvfrom(BUFSIZE)
-                tx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                tx_socket.connect(addr)
-                tx_socket.settimeout(TIMEOUT)
-                # verify SYN packet
+                data, addr = self.server_socket.recvfrom(BUFSIZE)  # blocking
                 if data[0] != ord('S'):
-                    raise Exception(f"Malformed SYN packet: {data}")
-                # strip header
-                file_name = data[1:].decode('ascii')
-                # self.transmit(file_name, tx_socket)  # TODO: run in async thread
-                tx_thread = threading.Thread(target=lambda: self.transmit(file_name, tx_socket))
-                tx_thread.start()
+                    # add to queue, it's not a new connection
+                    with self._incoming_lock:
+                        if not addr in self._incoming_packets:
+                            # doesn't have a connection yet, we can just ignore this source
+                            continue
+                        self._incoming_packets[addr].append(data)
+                else:
+                    # new connection, destroy previous message queue
+                    with self._incoming_lock:
+                        self._incoming_packets[addr] = []
+                    # strip header
+                    file_name = data[1:].decode('ascii')
+                    # process the rest of the handshake
+                    tx_thread = threading.Thread(target=lambda fn=file_name, a=addr: self.transmit(fn, a))
+                    tx_thread.start()
             except socket.timeout:
                 pass
-    
+
     def cli(self):  # cli interface for input of the file name
         listen_thread = threading.Thread(target=self.listener)
         listen_thread.start()
