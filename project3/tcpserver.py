@@ -200,6 +200,9 @@ class Server():
                 # reset window
                 last_sent_seq = last_recv_ack
                 tries += 1
+        # remove connection
+        with self._incoming_lock:
+            self._incoming_packets.pop(addr, None)
         
     def listener(self): # listen to the socket to see if there's any transmission request
         while self.remain_threads:

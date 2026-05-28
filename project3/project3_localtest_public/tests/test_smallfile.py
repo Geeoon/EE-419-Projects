@@ -13,7 +13,7 @@ print("===> Test case 2.1. Small File transfer test without packet loss")
 execution_dir_1 = './node1/'
 execution_dir_2 = './node2/'
 
-solution_path = './solution/tcpserver.py'
+solution_path = '../solution/tcpserver.py'
 
 print("===> Setup Connection")
 
