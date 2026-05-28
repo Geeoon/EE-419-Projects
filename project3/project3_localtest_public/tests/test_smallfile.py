@@ -47,7 +47,7 @@ except:
 
 
 kill_command()
-
+quit()
 # Check the case where file does not exist
 
 return_bool = False

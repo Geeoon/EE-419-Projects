@@ -3,6 +3,7 @@ import json
 import time
 import threading
 import struct
+import subprocess
 
 BUFSIZE = 10202  # size of receiving buffer
 PKTSIZE = 10200  # number of bytes in a packet
@@ -83,6 +84,7 @@ class Server():
                 received = received[1:]
                 # serialize the final sequence number
                 final_sequence_number = struct.unpack(">I", received)[0]
+                print(f"Final sequence number is {final_sequence_number}")
                 # send ACK
                 our_sequence_number += 1
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
@@ -91,6 +93,7 @@ class Server():
                 # handshake failed
                 # timeout waiting for SYNACK
                 # resend the SYN, so do nothing
+                # print("Timed out waiting for the SYNACK")
                 pass
       
         # start receiving file
@@ -99,17 +102,20 @@ class Server():
             try:
                 chunk = self.cl_socket.recv(BUFSIZE)
                 if chunk[0] != ord('D'):
-                    print(f"Improper DATA packet: {chunk}")  # we got junk, toss it
+                    # print(f"Improper DATA packet: {chunk}")  # we got junk, toss it
                     continue
                 seq_num = struct.unpack(">I", chunk[1:5])[0]
                 chunk = chunk[5:]  # strip the header
+                print(f"Got the following sequence number: {seq_num}")
                 if seq_num == our_sequence_number:
+                    print("Valid packet")
                     # valid packet
                     # store and increment our sequence numbers
                     data += chunk
                     our_sequence_number += 1
-                    connect_flag = our_sequence_number == final_sequence_number
+                    connect_flag = our_sequence_number != final_sequence_number + 1
                 else:
+                    print("Invalid packet, dropped")
                     # repeated or out of order packet
                     pass  # drop
             except socket.timeout:
@@ -117,6 +123,7 @@ class Server():
                 pass
             finally:
                 # send the ACK
+                print(f"Sending ACK with seq num: {our_sequence_number}")
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
                 
         # transmission complete, wait a little bit in-case our last ACK was dropped
@@ -167,16 +174,17 @@ class Server():
                     raise Exception(f"Did not receive the expected first ACK sequence number: {last_recv_ack}")
             except socket.timeout:
                 # did not receive ACK, try sending the SYNACK again
+                # print("Timed out waiting for ACK, sending another SYNACK")
                 self.server_socket.sendto(b'B' + struct.pack(">I", final_sequence_number), addr)
         # handshake done, start sending DATA packets
-        last_sent_seq = 0
+        last_sent_seq = 1
         tries = 0
         while last_recv_ack != final_sequence_number + 1 and tries < 3:
             try:
                 # send DATA packets in window
                 while last_sent_seq < min(last_recv_ack + WINDOW_SIZE, final_sequence_number + 1):
                     # send DATA packet
-                    self.server_socket.sendto(b'D' + struct.pack(">I", last_sent_seq + 1) + transmit_file[last_sent_seq], addr)
+                    self.server_socket.sendto(b'D' + struct.pack(">I", last_sent_seq) + transmit_file[last_sent_seq - 1], addr)
                     last_sent_seq += 1
                 data = self._recv_addr(addr)
                 tries = 0
@@ -185,14 +193,16 @@ class Server():
                 # strip header
                 data = data[1:]
                 seq_num = struct.unpack(">I", data)[0]
-
+                print(f"Got the following sequence number: {seq_num}")
                 if seq_num > last_recv_ack:
+                    print("Got normal ACK")
                     # normal behavior
                     # advance received sequence number
                     last_recv_ack = seq_num
                 elif seq_num == last_recv_ack:
                     # ACK sequence number indicates issue
                     # reset window
+                    print("ACK indicates issue")
                     last_recv_ack = seq_num
                     last_sent_seq = last_recv_ack
                 # in the case where we get an old ACK (i.e., out of order ACKs) we can just ignore it
@@ -200,6 +210,7 @@ class Server():
                 # reset window
                 last_sent_seq = last_recv_ack
                 tries += 1
+                print(f"Tries: {tries}")
         # remove connection
         with self._incoming_lock:
             self._incoming_packets.pop(addr, None)
@@ -208,14 +219,19 @@ class Server():
         while self.remain_threads:
             try:
                 data, addr = self.server_socket.recvfrom(BUFSIZE)  # blocking
+                # print(f"Got message: {data} from {addr}")
                 if data[0] != ord('S'):
                     # add to queue, it's not a new connection
                     with self._incoming_lock:
                         if not addr in self._incoming_packets:
                             # doesn't have a connection yet, we can just ignore this source
+                            # print(f"Ignoring {data} from {addr}")
                             continue
                         self._incoming_packets[addr].append(data)
                 else:
+                    with self._incoming_lock:
+                        if addr in self._incoming_packets:
+                            continue
                     # new connection, destroy previous message queue
                     with self._incoming_lock:
                         self._incoming_packets[addr] = []

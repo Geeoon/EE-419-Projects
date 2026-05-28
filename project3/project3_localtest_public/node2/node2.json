@@ -1,12 +1,12 @@
 {
     "hostname": "localhost",
-    "port": 18742,
+    "port": 3002,
     "peers": 1,
     "content_info": ["Carnegie_Mellon_University.jpg"],
     "peer_info": [
         {
             "hostname": "localhost",
-            "port": 18741,
+            "port": 3001,
             "content_info": ["Firefox_Final_VO.ogv", "trailer_400p.ogg"]
         }
     ]
