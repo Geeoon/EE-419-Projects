@@ -5,7 +5,7 @@ import threading
 import struct
 import subprocess
 
-BUFSIZE = 10202  # size of receiving buffer
+BUFSIZE = 10205  # size of receiving buffer
 PKTSIZE = 10200  # number of bytes in a packet
 WINDOW_SIZE = 16
 IDX_LENGTH = 2 # 2 bytes of packet index.  Not used
@@ -111,6 +111,7 @@ class Server():
                     print("Valid packet")
                     # valid packet
                     # store and increment our sequence numbers
+                    print(f"Adding {seq_num} chunk of length {len(chunk)}")
                     data += chunk
                     our_sequence_number += 1
                     connect_flag = our_sequence_number != final_sequence_number + 1
@@ -184,6 +185,7 @@ class Server():
                 # send DATA packets in window
                 while last_sent_seq < min(last_recv_ack + WINDOW_SIZE, final_sequence_number + 1):
                     # send DATA packet
+                    print(f"Sending packet {last_sent_seq} with data of length {len(transmit_file[last_sent_seq - 1])}")
                     self.server_socket.sendto(b'D' + struct.pack(">I", last_sent_seq) + transmit_file[last_sent_seq - 1], addr)
                     last_sent_seq += 1
                 data = self._recv_addr(addr)
@@ -205,6 +207,9 @@ class Server():
                     print("ACK indicates issue")
                     last_recv_ack = seq_num
                     last_sent_seq = last_recv_ack
+                    # flush the incoming packet buffer
+                    with self._incoming_lock:
+                        self._incoming_packets[addr] = []
                 # in the case where we get an old ACK (i.e., out of order ACKs) we can just ignore it
             except socket.timeout:
                 # reset window
