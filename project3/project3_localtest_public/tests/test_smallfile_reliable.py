@@ -17,7 +17,6 @@ execution_dir_1 = './node1/'
 execution_dir_2 = './node2/'
 
 solution_path = '../solution/tcpserver.py'
-# solution_path = '/18441_project3/solution/udpserver.py'
 
 print("===> Activate Packet Drop")
 shell_command_line_for_packet_drop = "python3 ./packet_drop_scripts/nf_python.py %f" % Packet_Drop_Probability

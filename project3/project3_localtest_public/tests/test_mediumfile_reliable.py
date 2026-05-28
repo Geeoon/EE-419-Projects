@@ -12,11 +12,11 @@ print()
 print("=" * 100)
 print("===> Test case 5.2. Medium File transfer test with packet loss")
 
-execution_dir_1 = './node1/'
-execution_dir_2 = '/18441_project3/localtest/node2/'
 
-solution_path = '/18441_project3/solution/tcpserver.py'
-# solution_path = '/18441_project3/solution/udpserver.py'
+execution_dir_1 = './node1/'
+execution_dir_2 = './node2/'
+
+solution_path = '../solution/tcpserver.py'
 
 print("===> Activate Packet Drop")
 shell_command_line_for_packet_drop = "python3 /18441_project3/localtest/packet_drop_scripts/nf_python.py %f" % Packet_Drop_Probability

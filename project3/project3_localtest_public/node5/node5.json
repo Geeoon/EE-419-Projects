@@ -1,12 +1,12 @@
 {
     "hostname": "localhost",
-    "port": 18745,
+    "port": 3005,
     "peers": 1,
     "content_info": [],
     "peer_info": [
         {
             "hostname": "localhost",
-            "port": 18741,
+            "port": 3001,
             "content_info": ["Firefox_Final_VO.ogv", "trailer_400p.ogg"]
         }
     ]

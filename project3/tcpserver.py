@@ -84,7 +84,7 @@ class Server():
                 received = received[1:]
                 # serialize the final sequence number
                 final_sequence_number = struct.unpack(">I", received)[0]
-                print(f"Final sequence number is {final_sequence_number}")
+                # print(f"Final sequence number is {final_sequence_number}")
                 # send ACK
                 our_sequence_number += 1
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
@@ -106,17 +106,17 @@ class Server():
                     continue
                 seq_num = struct.unpack(">I", chunk[1:5])[0]
                 chunk = chunk[5:]  # strip the header
-                print(f"Got the following sequence number: {seq_num}")
+                # print(f"Got the following sequence number: {seq_num}")
                 if seq_num == our_sequence_number:
-                    print("Valid packet")
+                    # print("Valid packet")
                     # valid packet
                     # store and increment our sequence numbers
-                    print(f"Adding {seq_num} chunk of length {len(chunk)}")
+                    # print(f"Adding {seq_num} chunk of length {len(chunk)}")
                     data += chunk
                     our_sequence_number += 1
                     connect_flag = our_sequence_number != final_sequence_number + 1
                 else:
-                    print("Invalid packet, dropped")
+                    # print("Invalid packet, dropped")
                     # repeated or out of order packet
                     pass  # drop
             except socket.timeout:
@@ -124,7 +124,7 @@ class Server():
                 pass
             finally:
                 # send the ACK
-                print(f"Sending ACK with seq num: {our_sequence_number}")
+                # print(f"Sending ACK with seq num: {our_sequence_number}")
                 self.cl_socket.send(b'A' + struct.pack(">I", our_sequence_number))
                 
         # transmission complete, wait a little bit in-case our last ACK was dropped
@@ -185,7 +185,7 @@ class Server():
                 # send DATA packets in window
                 while last_sent_seq < min(last_recv_ack + WINDOW_SIZE, final_sequence_number + 1):
                     # send DATA packet
-                    print(f"Sending packet {last_sent_seq} with data of length {len(transmit_file[last_sent_seq - 1])}")
+                    # print(f"Sending packet {last_sent_seq} with data of length {len(transmit_file[last_sent_seq - 1])}")
                     self.server_socket.sendto(b'D' + struct.pack(">I", last_sent_seq) + transmit_file[last_sent_seq - 1], addr)
                     last_sent_seq += 1
                 data = self._recv_addr(addr)
@@ -195,16 +195,16 @@ class Server():
                 # strip header
                 data = data[1:]
                 seq_num = struct.unpack(">I", data)[0]
-                print(f"Got the following sequence number: {seq_num}")
+                # print(f"Got the following sequence number: {seq_num}")
                 if seq_num > last_recv_ack:
-                    print("Got normal ACK")
+                    # print("Got normal ACK")
                     # normal behavior
                     # advance received sequence number
                     last_recv_ack = seq_num
                 elif seq_num == last_recv_ack:
                     # ACK sequence number indicates issue
                     # reset window
-                    print("ACK indicates issue")
+                    # print("ACK indicates issue")
                     last_recv_ack = seq_num
                     last_sent_seq = last_recv_ack
                     # flush the incoming packet buffer
@@ -215,7 +215,7 @@ class Server():
                 # reset window
                 last_sent_seq = last_recv_ack
                 tries += 1
-                print(f"Tries: {tries}")
+                # print(f"Tries: {tries}")
         # remove connection
         with self._incoming_lock:
             self._incoming_packets.pop(addr, None)
@@ -253,7 +253,11 @@ class Server():
         listen_thread.start()
 
         while self.remain_threads:
-            command_line = input()
+            try:
+                command_line = input()
+            except EOFError:
+                self.remain_threads = False
+                continue
             if command_line == "kill":  # for debugging purpose
                 # kill
                 self.remain_threads = False
