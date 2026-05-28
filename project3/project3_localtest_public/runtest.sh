@@ -4,6 +4,6 @@
 
 # python3 ./tests/test_concurrentrequests.py
 
-sudo python3 ./tests/test_smallfile_reliable.py
+# sudo python3 ./tests/test_smallfile_reliable.py
 
-# python3 ./tests/test_mediumfile_reliable.py
+sudo python3 ./tests/test_mediumfile_reliable.py
