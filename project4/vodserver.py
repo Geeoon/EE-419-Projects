@@ -10,19 +10,21 @@ class Vod_Server():
         # create an HTTP port to listen to
         self.http_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.http_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.http_socket.bind(("", port_id))
+        self.http_socket.bind(("0.0.0.0", port_id))
         self.http_socket.listen(10000)
         self.remain_threads = True
 
         # load all contents in the buffer
-        
+        self.contents = self.load_contents("./contents")
         # listen to the http socket
         self.listen()
-        pass
 
     def load_contents(self, dir):
         #Create a list of files and stuff that you have
-        return
+        out = 
+        for path, subdirs, files in os.walk(dir):
+            for name in files:
+                out.append(os.path.join(path, name))
 
     def listen(self):
         while self.remain_threads:
