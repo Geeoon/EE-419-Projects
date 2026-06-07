@@ -1,6 +1,7 @@
 import socket, sys
 import datetime
 import os
+import threading
 
 BUFSIZE = 1024
 LARGEST_CONTENT_SIZE = 5242880
@@ -15,28 +16,42 @@ class Vod_Server():
         self.remain_threads = True
 
         # load all contents in the buffer
-        self.contents = self.load_contents("./contents")
+        self.contents = self.load_contents("./contents")  # this is the only part it should be set
+        print(self.contents)
         # listen to the http socket
         self.listen()
 
     def load_contents(self, dir):
         #Create a list of files and stuff that you have
-        out = 
+        out = {}
         for path, subdirs, files in os.walk(dir):
             for name in files:
-                out.append(os.path.join(path, name))
+                full = os.path.join(path, name)
+                with open(full, "rb") as f:
+                    out[full] = {
+                        "protected": full.startswith("./contents/confidential/"),
+                        "contents": f.read()
+                    }
+        return out
 
     def listen(self):
         while self.remain_threads:
             connection_socket, client_address = self.http_socket.accept()
-            msg_string = connection_socket.recv(BUFSIZE).decode()
-            
-            #Do stuff here
+            # start thread
+            threading.Thread(target=self.response, args=(connection_socket,)).start()
+            # Do stuff here
         return
     
-    def response(self, msg_string, connection_socket):
-        #Do based on the situation if the files exist, do not exist or are unable to respond due to confidentiality
-        return
+    def response(self, connection_socket):
+        # Do based on the situation if the files exist, do not exist or are unable to respond due to confidentiality
+        msg = connection_socket.recv(BUFSIZE).decode()
+        lines = msg.split(b'\r\n')
+        # decode the METHOD, PATH, and VERSION.  NOTE: method and version can be ignored for this project
+        _, path, _ = lines[0].split(b' ')
+        # parse headers
+
+    def parse_headers(self, headers):
+        pass
     
     def generate_response_404(self, http_version, connection_socket):
         #Generate Response and Send
@@ -61,14 +76,6 @@ class Vod_Server():
     def generate_content_type(self, file_type):
         #Generate Headers
         return ""
-
-    def eval_commands(self, commands):
-        command_dict = {}
-        for item in commands[1:]:
-            item = item.rstrip()
-            splitted_item = item.split(":")
-            command_dict[splitted_item[0]] = splitted_item[1].strip()
-        return command_dict
 
 if __name__ == "__main__":
     Vod_Server(int(sys.argv[1]))
