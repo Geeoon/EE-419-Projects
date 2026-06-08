@@ -16,7 +16,7 @@ class Vod_Server():
         self.remain_threads = True
 
         # load all contents in the buffer
-        self.root = "./contents"
+        self.root = "./content"
         self.max_content = 5242880
         self.contents = self.load_contents(self.root)  # this is the only part it should be set
         # listen to the http socket
