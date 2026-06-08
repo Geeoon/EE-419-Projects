@@ -49,7 +49,6 @@ class Vod_Server():
             connection_socket, client_address = self.http_socket.accept()
             # start thread for each connection
             threading.Thread(target=self.response_thread, args=(connection_socket,)).start()
-        return
     
     def response(self, msg):
         if not msg:
@@ -82,7 +81,6 @@ class Vod_Server():
                 res, close = self.response(msg)
                 if res:
                     connection_socket.sendall(res)
-                pass
             except ConnectionResetError:
                 pass
 
