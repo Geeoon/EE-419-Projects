@@ -17,7 +17,7 @@ class Vod_Server():
 
         # load all contents in the buffer
         self.root = "./contents"
-        self.max_content = 5000000
+        self.max_content = 5242880
         self.contents = self.load_contents(self.root)  # this is the only part it should be set
         # listen to the http socket
         self.listen()
